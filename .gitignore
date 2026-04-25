@@ -1,0 +1,5 @@
+.env
+.mail_password
+__pycache__/
+*.pyc
+.venv/
