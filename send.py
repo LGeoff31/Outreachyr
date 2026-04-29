@@ -4,7 +4,40 @@ from email.message import EmailMessage
 from pathlib import Path
 
 GMAIL = "geoffrey31415@gmail.com"
-TO = ["lgeoff31@gmail.com"]
+# Each entry: email string, or (email, "First name") to override the guess.
+TO = [
+    "linh.nguyen@career.nvidia.com",
+    "cori.cook@career.nvidia.com",
+    "katherine.rettberg@career.nvidia.com",
+    "rikki.nakashoji@career.nvidia.com",
+    "lauren.salustro@career.nvidia.com",
+    "sophia.vanegas@career.nvidia.com",
+]
+
+# In file `body`, put __FIRST_NAME__ where the greeting should go (see _first_name_from_email).
+PLACEHOLDER = "__FIRST_NAME__"
+
+
+def _first_name_from_email(addr: str) -> str:
+    """Guess 'Linh' from 'linh.nguyen@nvidia.com' (first dot-separated part of local address)."""
+    local = addr.split("@", 1)[0].strip()
+    if not local:
+        return "there"
+    first = local.split(".", 1)[0].split("_", 1)[0]
+    return first[:1].upper() + first[1:].lower() if first else "there"
+
+
+def _normalize_recipients() -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for item in TO:
+        if isinstance(item, tuple):
+            email, name = item[0].strip(), item[1].strip()
+            out.append((email, name))
+        else:
+            email = item.strip()
+            out.append((email, _first_name_from_email(email)))
+    return out
+
 
 RESUME: Path | None = Path(__file__).resolve().parent / "resume.pdf"
 
@@ -23,11 +56,12 @@ def _body() -> str:
 
 def send_email() -> None:
     password = _app_password()
-    body = _body()
+    template = _body()
 
-    for email in TO:
+    for email, first_name in _normalize_recipients():
+        body = template.replace(PLACEHOLDER, first_name)
         msg = EmailMessage()
-        msg["Subject"] = "Hi friend"
+        msg["Subject"] = "Placeholder"
         msg["From"] = GMAIL
         msg["To"] = email
         msg.set_content(body)
