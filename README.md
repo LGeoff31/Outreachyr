@@ -1,8 +1,8 @@
 # Outreachyr
 
 1. Clone this repo
-2. Modiy send.py by: add your email, the list of recruiter emails you want to send to, a subject line
-3. Add your email body in the body file
-4. Add your .mail_password, can create own 16 HASH on google accounts
-5. Start backend server: python3 app.py
+2. Create a `.env` file with `SERPAPI_API_KEY`, `GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD`
+3. Optionally modify `send.py` by adding specific recruiter emails to `TO` or changing the subject line
+4. Add your email body in the `body` file
+5. Start backend server: `python app.py`
 6. Run the script
