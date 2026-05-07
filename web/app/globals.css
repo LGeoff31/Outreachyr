@@ -3,18 +3,50 @@
 @tailwind utilities;
 
 :root {
-  --foreground: #fafafa;
-  --background-start: #09090b;
-  --background-end: #18181b;
+  --background: #ffffff;
+  --foreground: #101522;
+  --muted: #5f6675;
+  --line: #dfe5ef;
+  --blue: #245bff;
+  --blue-strong: #1749df;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   color: var(--foreground);
-  background: linear-gradient(
-      180deg,
-      var(--background-start) 0%,
-      var(--background-end) 100%
-    )
-    fixed;
+  background: var(--background);
   min-height: 100vh;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(36, 91, 255, 0.16);
+}
+
+:focus-visible {
+  outline: 3px solid rgba(36, 91, 255, 0.35);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
