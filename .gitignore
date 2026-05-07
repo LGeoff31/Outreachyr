@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .venv/
 test.py
+
+# Next.js
+web/node_modules/
+web/.next/
+web/out/
