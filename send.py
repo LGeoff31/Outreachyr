@@ -59,11 +59,11 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]
                 detail = e.read().decode(errors="replace")
             except OSError:
                 detail = str(e)
-            raise SystemExit(f"SerpAPI HTTP {e.code}: {detail}") from e
+            raise RuntimeError(f"SerpAPI HTTP {e.code}: {detail}") from e
 
         err = data.get("error")
         if err:
-            raise SystemExit(f"SerpAPI: {err}")
+            raise RuntimeError(f"SerpAPI: {err}")
         organic = data.get("organic_results") or []
         if not organic:
             break
@@ -90,8 +90,7 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]
 def discover(company: str) -> list[tuple[str, str]]:
     domain = domain_for_company(company)
     if domain is None:
-        print("COMPANY DOMAIN NOT FOUND")
-        return
+        return []
     api_key = serpapi_api_key()
     domain = domain.lstrip("@").strip()
     q = f'"{company}" campus recruiter site:linkedin.com/in'
@@ -112,21 +111,56 @@ def recipients() -> list[tuple[str, str]]:
 RESUME = Path(__file__).resolve().parent / "resume.pdf"
 
 
-def send(people: list[tuple[str, str]], company: str | None) -> None:
+def send(
+    people: list[tuple[str, str]],
+    company: str | None,
+    *,
+    subject: str | None = None,
+    body_text: str | None = None,
+    resume_bytes: bytes | None = None,
+    resume_filename: str = "resume.pdf",
+) -> None:
+    """Send using optional overrides; defaults read ./body and ./resume.pdf on disk."""
     gmail, pw = gmail_credentials()
-    body = (Path(__file__).resolve().parent /
-            "body").read_text(encoding="utf-8")
-    company_name = company[0].upper() + company[1:].lower() if company else ""
+    root = Path(__file__).resolve().parent
+
+    if body_text is None:
+        body_text = (root / "body").read_text(encoding="utf-8")
+
+    if subject and subject.strip():
+        final_subject = subject.strip()
+    else:
+        c = (company or "").strip()
+        if c:
+            name = (
+                c[0].upper() + c[1:].lower()
+                if len(c) > 1 else c.upper()
+            )
+            final_subject = f"{name} Fall 2026 Co-op"
+        else:
+            final_subject = "Outreach"
 
     for email, hi in people:
         msg = EmailMessage()
-        msg["Subject"] = f"{company_name} Fall 2026 Co-op"
+        msg["Subject"] = final_subject
         msg["From"], msg["To"] = gmail, email
-        msg.set_content(body.replace(PLACEHOLDER, hi))
-        if RESUME.is_file():
+        msg.set_content(body_text.replace(PLACEHOLDER, hi))
+
+        if resume_bytes is not None:
+            fn = resume_filename or "attachment.pdf"
+            sub = Path(fn).suffix.lower().lstrip(".") or "pdf"
+            if sub == "pdf":
+                main, t = "application", "pdf"
+            else:
+                main, t = "application", sub
+            msg.add_attachment(
+                resume_bytes, maintype=main, subtype=t, filename=Path(fn).name
+            )
+        elif RESUME.is_file():
             data = RESUME.read_bytes()
-            msg.add_attachment(data, maintype="application",
-                               subtype="pdf", filename=RESUME.name)
+            msg.add_attachment(
+                data, maintype="application", subtype="pdf", filename=RESUME.name
+            )
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
             s.login(gmail, pw)
             s.send_message(msg)
@@ -142,7 +176,10 @@ def main() -> None:
     a = p.parse_args()
 
     if a.company:
-        people = discover(a.company)
+        try:
+            people = discover(a.company)
+        except RuntimeError as e:
+            raise SystemExit(str(e)) from e
         if not people:
             raise SystemExit(
                 "No addresses found. Try another company spelling or check API limits.")

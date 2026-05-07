@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import smtplib
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -32,34 +31,27 @@ app = FastAPI(title="Outreach API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-class SendRequest(BaseModel):
-    company: str = Field("", description="Mapping key, e.g. palantir")
-    dry_run: bool = Field(
-        True, description="If true, only return inferred addresses")
+def _parse_bool(v: str) -> bool:
+    return str(v).lower() in ("true", "1", "on", "yes")
 
 
-@app.get("/api/companies")
-def api_companies():
-    """Known company keys from mapping (for UI hints)."""
-    from mapping import COMPANY_EMAIL_HOST
-
-    return {"companies": sorted(COMPANY_EMAIL_HOST.keys())}
-
-
-@app.post("/api/send")
-def api_send(body: SendRequest):
-    company = body.company.strip()
-
+def _run_send(
+    *,
+    company: str,
+    dry_run: bool,
+    subject: str,
+    body_text: str,
+    resume_bytes: bytes | None,
+    resume_filename: str,
+):
+    company = company.strip()
     if not company:
         return JSONResponse(
             status_code=400,
@@ -94,7 +86,7 @@ def api_send(body: SendRequest):
 
     recipients = [{"email": e, "greeting_name": n} for e, n in people]
 
-    if body.dry_run:
+    if dry_run:
         return {
             "ok": True,
             "dry_run": True,
@@ -102,15 +94,84 @@ def api_send(body: SendRequest):
             "recipients": recipients,
         }
 
+    subj = subject.strip() or None
+    body_opt = body_text if body_text.strip() else None
     try:
-        outreach.send(people, company)
-    except (RuntimeError, OSError, smtplib.SMTPException) as e:
+        outreach.send(
+            people,
+            company,
+            subject=subj,
+            body_text=body_opt,
+            resume_bytes=resume_bytes,
+            resume_filename=resume_filename or "resume.pdf",
+        )
+    except (OSError, smtplib.SMTPException) as e:
         return JSONResponse(
             status_code=500,
             content={"ok": False, "error": f"Send failed: {e}"},
         )
 
     return {"ok": True, "dry_run": False, "sent": len(people)}
+
+
+class SendJsonRequest(BaseModel):
+    company: str = Field("", description="Mapping key")
+    dry_run: bool = Field(True)
+    subject: str = Field("")
+    body_text: str = Field("")
+
+
+@app.get("/")
+def root():
+    """FastAPI is API-only; run the React app from `web/` (Next.js on port 3000)."""
+    return {
+        "service": "Outreach API",
+        "docs": "/docs",
+        "health": "/health",
+        "frontend": "cd web && npm run dev  →  http://localhost:3000",
+    }
+
+
+@app.get("/api/companies")
+def api_companies():
+    from mapping import COMPANY_EMAIL_HOST
+
+    return {"companies": sorted(COMPANY_EMAIL_HOST.keys())}
+
+
+@app.post("/api/send")
+async def api_send_multipart(
+    company: str = Form(...),
+    dry_run: str = Form("true"),
+    subject: str = Form(""),
+    body_text: str = Form(""),
+    resume: UploadFile | None = File(None),
+):
+    rbytes: bytes | None = None
+    rname = "resume.pdf"
+    if resume is not None and resume.filename:
+        rbytes = await resume.read()
+        rname = resume.filename
+    return _run_send(
+        company=company,
+        dry_run=_parse_bool(dry_run),
+        subject=subject,
+        body_text=body_text,
+        resume_bytes=rbytes,
+        resume_filename=rname,
+    )
+
+
+@app.post("/api/send/json")
+def api_send_json(body: SendJsonRequest):
+    return _run_send(
+        company=body.company,
+        dry_run=body.dry_run,
+        subject=body.subject,
+        body_text=body.body_text,
+        resume_bytes=None,
+        resume_filename="resume.pdf",
+    )
 
 
 @app.get("/health")
