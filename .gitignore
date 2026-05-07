@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .venv/
+.uv-cache/
 test.py
 
 # Next.js
