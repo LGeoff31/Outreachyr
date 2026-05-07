@@ -1,19 +1,6 @@
-import os
 import re
 import unicodedata
-from pathlib import Path
 from mapping import COMPANY_EMAIL_HOST
-
-
-def _load_dotenv():
-    env = Path(__file__).resolve().parent / ".env"
-
-    for line in env.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        k, _, v = line.partition("=")
-        k, v = k.strip(), v.strip()
-        if k and k not in os.environ:
-            os.environ[k] = v
 
 
 def _letters(s: str) -> str:

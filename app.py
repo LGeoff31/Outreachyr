@@ -9,7 +9,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 import send as outreach
-from utils import _load_dotenv, domain_for_company
+from config import load_dotenv
+from utils import domain_for_company
 
 _app_init_done = False
 
@@ -17,7 +18,7 @@ _app_init_done = False
 def ensure_env() -> None:
     global _app_init_done
     if not _app_init_done:
-        _load_dotenv()
+        load_dotenv()
         _app_init_done = True
 
 
@@ -103,7 +104,7 @@ def api_send(body: SendRequest):
 
     try:
         outreach.send(people, company)
-    except (OSError, smtplib.SMTPException) as e:
+    except (RuntimeError, OSError, smtplib.SMTPException) as e:
         return JSONResponse(
             status_code=500,
             content={"ok": False, "error": f"Send failed: {e}"},

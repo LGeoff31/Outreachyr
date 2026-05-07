@@ -1,15 +1,14 @@
 import argparse
 import json
-import os
 import smtplib
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from utils import _load_dotenv, _letters, _first_from_email, domain_for_company
+from config import gmail_credentials, load_dotenv, serpapi_api_key
+from utils import _letters, _first_from_email, domain_for_company
 
-GMAIL = "geoffrey31415@gmail.com"
 PLACEHOLDER = "__FIRST_NAME__"
 TO = []  # (optional) insert specific recruiter emails here
 
@@ -93,7 +92,7 @@ def discover(company: str) -> list[tuple[str, str]]:
     if domain is None:
         print("COMPANY DOMAIN NOT FOUND")
         return
-    api_key = os.environ["SERPAPI_API_KEY"].strip()
+    api_key = serpapi_api_key()
     domain = domain.lstrip("@").strip()
     q = f'"{company}" campus recruiter site:linkedin.com/in'
     return _discover_serpapi(q, domain, api_key)
@@ -114,9 +113,7 @@ RESUME = Path(__file__).resolve().parent / "resume.pdf"
 
 
 def send(people: list[tuple[str, str]], company: str | None) -> None:
-    pw = (Path(__file__).resolve().parent /
-          ".mail_password").read_text(encoding="utf-8")
-    pw = "".join(pw.strip().splitlines()[0].split())
+    gmail, pw = gmail_credentials()
     body = (Path(__file__).resolve().parent /
             "body").read_text(encoding="utf-8")
     company_name = company[0].upper() + company[1:].lower() if company else ""
@@ -124,20 +121,20 @@ def send(people: list[tuple[str, str]], company: str | None) -> None:
     for email, hi in people:
         msg = EmailMessage()
         msg["Subject"] = f"{company_name} Fall 2026 Co-op"
-        msg["From"], msg["To"] = GMAIL, email
+        msg["From"], msg["To"] = gmail, email
         msg.set_content(body.replace(PLACEHOLDER, hi))
         if RESUME.is_file():
             data = RESUME.read_bytes()
             msg.add_attachment(data, maintype="application",
                                subtype="pdf", filename=RESUME.name)
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-            s.login(GMAIL, pw)
+            s.login(gmail, pw)
             s.send_message(msg)
     print("Sent.")
 
 
 def main() -> None:
-    _load_dotenv()
+    load_dotenv()
     p = argparse.ArgumentParser()
     p.add_argument("--company", help="Company name i.e Nvidia")
     p.add_argument("--dry-run", action="store_true",
