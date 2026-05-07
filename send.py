@@ -32,7 +32,7 @@ def _ingest_search_items(items: list[dict], domain: str) -> list[tuple[str, str]
         lf, ll = _letters(first), _letters(last)
         if len(lf) < 2 or len(ll) < 2:  # If it's J.Cole, obviously not full name so ignore
             continue
-        addr = f"{lf[0]}{ll}@{domain}"
+        addr = f"{lf}.{ll}@{domain}"  # <-- POTENTIALLY MODIFY
         if addr in seen:
             continue
         seen.add(addr)
@@ -113,16 +113,17 @@ def recipients() -> list[tuple[str, str]]:
 RESUME = Path(__file__).resolve().parent / "resume.pdf"
 
 
-def send(people: list[tuple[str, str]]) -> None:
+def send(people: list[tuple[str, str]], company: str | None) -> None:
     pw = (Path(__file__).resolve().parent /
           ".mail_password").read_text(encoding="utf-8")
     pw = "".join(pw.strip().splitlines()[0].split())
     body = (Path(__file__).resolve().parent /
             "body").read_text(encoding="utf-8")
+    company_name = company[0].upper() + company[1:].lower() if company else ""
 
     for email, hi in people:
         msg = EmailMessage()
-        msg["Subject"] = "Palantir Fall 2026 Co-op"
+        msg["Subject"] = f"{company_name} Fall 2026 Co-op"
         msg["From"], msg["To"] = GMAIL, email
         msg.set_content(body.replace(PLACEHOLDER, hi))
         if RESUME.is_file():
@@ -156,7 +157,7 @@ def main() -> None:
             print(f"{e}  ({n})")
         return  # DO NOT SEND EMAILS when dry run flag is set
 
-    send(people)
+    send(people, a.company.strip() if a.company else None)
 
 
 if __name__ == "__main__":
