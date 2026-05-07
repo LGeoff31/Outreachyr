@@ -2,6 +2,7 @@ import os
 import re
 import unicodedata
 from pathlib import Path
+from mapping import COMPANY_EMAIL_HOST
 
 
 def _load_dotenv():
@@ -26,3 +27,8 @@ def _first_from_email(addr: str) -> str:
     local = addr.split("@")[0]
     part = re.split(r"[._]", local, maxsplit=1)[0]
     return part[:1].upper() + part[1:].lower() if part else "there"
+
+
+def domain_for_company(name: str) -> str | None:
+    key = name.strip().lower()
+    return COMPANY_EMAIL_HOST.get(key)

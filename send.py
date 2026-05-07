@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from utils import _load_dotenv, _letters, _first_from_email
+from utils import _load_dotenv, _letters, _first_from_email, domain_for_company
 
 GMAIL = "geoffrey31415@gmail.com"
 PLACEHOLDER = "__FIRST_NAME__"
@@ -32,7 +32,7 @@ def _ingest_search_items(items: list[dict], domain: str) -> list[tuple[str, str]
         lf, ll = _letters(first), _letters(last)
         if len(lf) < 2 or len(ll) < 2:  # If it's J.Cole, obviously not full name so ignore
             continue
-        addr = f"{lf}.{ll}@{domain}"
+        addr = f"{lf[0]}{ll}@{domain}"
         if addr in seen:
             continue
         seen.add(addr)
@@ -88,7 +88,11 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]
     return deduped
 
 
-def discover(company: str, domain: str) -> list[tuple[str, str]]:
+def discover(company: str) -> list[tuple[str, str]]:
+    domain = domain_for_company(company)
+    if domain is None:
+        print("COMPANY DOMAIN NOT FOUND")
+        return
     api_key = os.environ["SERPAPI_API_KEY"].strip()
     domain = domain.lstrip("@").strip()
     q = f'"{company}" campus recruiter site:linkedin.com/in'
@@ -118,7 +122,7 @@ def send(people: list[tuple[str, str]]) -> None:
 
     for email, hi in people:
         msg = EmailMessage()
-        msg["Subject"] = "Placeholder"
+        msg["Subject"] = "Palantir Fall 2026 Co-op"
         msg["From"], msg["To"] = GMAIL, email
         msg.set_content(body.replace(PLACEHOLDER, hi))
         if RESUME.is_file():
@@ -135,14 +139,12 @@ def main() -> None:
     _load_dotenv()
     p = argparse.ArgumentParser()
     p.add_argument("--company", help="Company name i.e Nvidia")
-    p.add_argument(
-        "--domain", help="Domain name of a company i.e @careers.nvidia.com")
     p.add_argument("--dry-run", action="store_true",
                    help="Print addresses only, do not send")
     a = p.parse_args()
 
     if a.company:
-        people = discover(a.company, a.domain)
+        people = discover(a.company)
         if not people:
             raise SystemExit(
                 "No addresses found. Try another company spelling or check API limits.")
