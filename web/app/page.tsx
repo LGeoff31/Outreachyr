@@ -54,12 +54,6 @@ const steps = [
   },
 ];
 
-const processSteps = [
-  ["1", "Choose company", "Start with a familiar company name."],
-  ["2", "Preview campaign", "Review contacts and message content."],
-  ["3", "Confirm send", "Unlock sending only after review."],
-];
-
 const pricing = [
   {
     name: "Start",
@@ -77,7 +71,7 @@ export default function HomePage() {
   return (
     <div className="overflow-x-hidden bg-background text-foreground">
       <section className="relative overflow-hidden">
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-12 px-5 pb-12 pt-12 sm:px-8 lg:min-h-[690px] lg:grid-cols-[0.9fr_1.05fr] lg:pb-12 lg:pt-10">
+        <div className="mx-auto grid w-full max-w-7xl items-center gap-14 px-5 pb-16 pt-14 sm:px-8 sm:pt-16 lg:min-h-[calc(100svh-13rem)] lg:grid-cols-[0.9fr_1.05fr] lg:gap-16 lg:py-0">
           <div className="min-w-0 max-w-[calc(100vw-2.5rem)] sm:max-w-2xl">
             <h1 className="text-balance text-4xl font-semibold leading-[1.04] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
               Reach the right <span className="text-primary">recruiters.</span>
@@ -116,31 +110,14 @@ export default function HomePage() {
 
           <CampaignPreview />
         </div>
-
-        <div className="mx-auto grid max-w-7xl gap-4 px-5 pb-14 sm:px-8 md:grid-cols-3">
-          {steps.map((step) => (
-            <div key={step.title} className="flex items-start gap-4 pt-6">
-              <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm">
-                <step.icon aria-hidden="true" className="size-6" />
-              </span>
-              <div className="min-w-0">
-                <Separator className="mb-5" />
-                <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                  {step.title}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {step.body}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section id="how-it-works" className="border-y border-border bg-muted">
-        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr]">
-          <div>
-            <Badge variant="secondary">Guided review</Badge>
+        <div className="mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 lg:pb-24 lg:pt-14">
+          <div className="mx-auto max-w-2xl text-center">
+            <Badge variant="outline" className="uppercase tracking-wide">
+              How it works
+            </Badge>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               A guided flow that keeps users in control.
             </h2>
@@ -149,20 +126,19 @@ export default function HomePage() {
               path so first-time users know exactly what happens next.
             </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {processSteps.map(([number, title, body]) => (
-              <Card key={title} className="rounded-2xl bg-card shadow-sm">
+          <div className="mt-14 grid gap-4 md:grid-cols-3">
+            {steps.map((step) => (
+              <Card key={step.title} className="rounded-2xl bg-card shadow-sm">
                 <CardHeader className="px-6">
-                  <Badge
-                    variant="secondary"
-                    className="size-10 rounded-full p-0 text-sm font-bold"
-                  >
-                    {number}
-                  </Badge>
+                  <span className="flex size-12 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm">
+                    <step.icon aria-hidden="true" className="size-6" />
+                  </span>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-3 px-6 pb-2 pt-4">
-                  <CardTitle>{title}</CardTitle>
-                  <CardDescription className="leading-6">{body}</CardDescription>
+                <CardContent className="flex flex-col gap-3 px-6 pb-3 pt-3">
+                  <CardTitle>{step.title}</CardTitle>
+                  <CardDescription className="leading-6">
+                    {step.body}
+                  </CardDescription>
                 </CardContent>
               </Card>
             ))}
@@ -207,7 +183,7 @@ function CampaignPreview() {
   return (
     <div className="relative min-w-0 max-w-[calc(100vw-2.5rem)] sm:max-w-none">
       <div className="absolute inset-0 translate-y-10 rounded-[2rem] bg-primary/10 blur-3xl" />
-      <Card className="relative w-full rounded-[1.75rem] bg-card p-5 shadow-2xl shadow-muted-foreground/15 ring-border/80 sm:p-7">
+      <Card className="relative w-full rounded-[1.75rem] bg-card p-5 shadow-2xl shadow-muted-foreground/15 ring-border/80 sm:p-6">
         <CardHeader className="px-0">
           <div className="flex items-center gap-3">
             <span className="flex size-10 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground">
@@ -284,14 +260,15 @@ function CampaignPreview() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 rounded-2xl bg-foreground p-4 text-background sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium">
+          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+              <Lock aria-hidden="true" className="size-5 text-primary" />
               Send unlocks after every recipient and message is reviewed.
             </p>
             <Link
               href="/dashboard"
               className={cn(
-                buttonVariants({ variant: "secondary", size: "lg" }),
+                buttonVariants({ variant: "outline", size: "lg" }),
                 "min-h-11 rounded-xl px-5"
               )}
             >
