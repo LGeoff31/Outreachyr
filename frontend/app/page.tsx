@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Eye, FileText, Lock, Paperclip, Search } from "lucide-react";
+import { FileText, Lock } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -36,37 +36,6 @@ const recipients = [
   },
 ];
 
-const steps = [
-  {
-    title: "Find recruiters",
-    body: "Type a company name and Outreachyr checks the mapped company domain before looking for matching recruiter contacts.",
-    icon: Search,
-  },
-  {
-    title: "Review before send",
-    body: "See the recipients, subject, and message in one place. The send action stays locked until review is confirmed.",
-    icon: Eye,
-  },
-  {
-    title: "Attach your resume",
-    body: "Add a PDF once, preview the campaign, then send only after the final confirmation step.",
-    icon: Paperclip,
-  },
-];
-
-const pricing = [
-  {
-    name: "Start",
-    price: "Free",
-    body: "Build and preview outreach campaigns with your local backend.",
-  },
-  {
-    name: "Campus",
-    price: "Team-ready",
-    body: "Shared templates, review workflows, and clearer handoffs for student groups.",
-  },
-];
-
 export default function HomePage() {
   return (
     <div className="overflow-x-hidden bg-background text-foreground">
@@ -81,98 +50,13 @@ export default function HomePage() {
               drafts personalized emails, and keeps every message in review
               until you approve it.
             </p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link
-                href="/sign-up"
-                className={cn(
-                  buttonVariants({ size: "lg" }),
-                  "min-h-14 rounded-xl px-8 text-base shadow-xl shadow-primary/20"
-                )}
-              >
-                Start free
-              </Link>
-              <Link
-                href="#how-it-works"
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "lg" }),
-                  "min-h-14 rounded-xl px-6 text-base text-primary"
-                )}
-              >
-                See how it works
-                <ArrowRight data-icon="inline-end" aria-hidden="true" />
-              </Link>
-            </div>
-            <p className="mt-7 flex items-center gap-3 text-sm font-medium text-muted-foreground">
+            <p className="mt-9 flex items-center gap-3 text-sm font-medium text-muted-foreground">
               <Lock aria-hidden="true" className="size-5 text-foreground" />
               Nothing is sent without your review.
             </p>
           </div>
 
           <CampaignPreview />
-        </div>
-      </section>
-
-      <section id="how-it-works" className="border-y border-border bg-muted">
-        <div className="mx-auto max-w-[90rem] px-5 pb-20 pt-12 sm:px-8 lg:pb-24 lg:pt-14">
-          <div className="mx-auto max-w-2xl text-center">
-            <Badge variant="outline" className="uppercase tracking-wide">
-              How it works
-            </Badge>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              A guided flow that keeps users in control.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              The interface uses plain labels, visible steps, and a locked send
-              path so first-time users know exactly what happens next.
-            </p>
-          </div>
-          <div className="mt-14 grid gap-4 md:grid-cols-3">
-            {steps.map((step) => (
-              <Card key={step.title} className="rounded-2xl bg-card shadow-sm">
-                <CardHeader className="px-6">
-                  <span className="flex size-12 items-center justify-center rounded-full border border-border bg-background text-foreground shadow-sm">
-                    <step.icon aria-hidden="true" className="size-6" />
-                  </span>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3 px-6 pb-3 pt-3">
-                  <CardTitle>{step.title}</CardTitle>
-                  <CardDescription className="leading-6">
-                    {step.body}
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="pricing" className="bg-background">
-        <div className="mx-auto max-w-[90rem] px-5 py-20 sm:px-8">
-          <div className="max-w-2xl">
-            <Badge variant="outline">Pricing</Badge>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              Pricing that matches early outreach.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              Start with a simple local workflow. Move into shared review when
-              multiple people are managing recruiter outreach together.
-            </p>
-          </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
-            {pricing.map((plan) => (
-              <Card key={plan.name} className="rounded-2xl bg-card shadow-sm">
-                <CardHeader className="px-7">
-                  <CardTitle className="text-xl">{plan.name}</CardTitle>
-                  <CardAction className="text-right text-xl font-semibold text-primary">
-                    {plan.price}
-                  </CardAction>
-                  <CardDescription className="max-w-md leading-6">
-                    {plan.body}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
         </div>
       </section>
     </div>
@@ -266,7 +150,7 @@ function CampaignPreview() {
               Send unlocks after every recipient and message is reviewed.
             </p>
             <Link
-              href="/sign-up"
+              href="/dashboard/new"
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "min-h-11 rounded-xl px-5"

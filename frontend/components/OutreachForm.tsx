@@ -62,6 +62,7 @@ type SendResponse = {
   count?: number;
   recipients?: Recipient[];
   sent?: number;
+  auth_required?: boolean;
 };
 
 const defaultCompany = "Palantir";
@@ -129,12 +130,22 @@ export function OutreachForm() {
       if (file) fd.append("resume", file, file.name);
 
       try {
-        const res = await fetch("/api/send", { method: "POST", body: fd });
+        const res = await fetch("/api/send", {
+          method: "POST",
+          body: fd,
+          credentials: "include",
+        });
         const data = (await res.json()) as SendResponse;
 
         if (!data.ok) {
           setErr(true);
-          setMessage(data.error ?? "The campaign could not be prepared.");
+          const authHint =
+            res.status === 401 || data.auth_required
+              ? " Sign in with Google from the header or /login."
+              : "";
+          setMessage(
+            (data.error ?? "The campaign could not be prepared.") + authHint
+          );
           return;
         }
 

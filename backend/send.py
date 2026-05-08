@@ -1,12 +1,11 @@
 import argparse
 import json
-import smtplib
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from config import gmail_credentials, load_dotenv, serpapi_api_key
+from config import load_dotenv, serpapi_api_key
 from utils import _letters, _first_from_email, domain_for_company
 
 PLACEHOLDER = "__FIRST_NAME__"
@@ -111,17 +110,16 @@ def recipients() -> list[tuple[str, str]]:
 RESUME = Path(__file__).resolve().parent / "resume.pdf"
 
 
-def send(
+def build_outreach_messages(
     people: list[tuple[str, str]],
     company: str | None,
     *,
+    sender_email: str,
     subject: str | None = None,
     body_text: str | None = None,
     resume_bytes: bytes | None = None,
     resume_filename: str = "resume.pdf",
-) -> None:
-    """Send using optional overrides; defaults read ./body and ./resume.pdf on disk."""
-    gmail, pw = gmail_credentials()
+) -> list[EmailMessage]:
     root = Path(__file__).resolve().parent
 
     if body_text is None:
@@ -140,10 +138,11 @@ def send(
         else:
             final_subject = "Outreach"
 
+    messages: list[EmailMessage] = []
     for email, hi in people:
         msg = EmailMessage()
         msg["Subject"] = final_subject
-        msg["From"], msg["To"] = gmail, email
+        msg["From"], msg["To"] = sender_email, email
         msg.set_content(body_text.replace(PLACEHOLDER, hi))
 
         if resume_bytes is not None:
@@ -161,10 +160,8 @@ def send(
             msg.add_attachment(
                 data, maintype="application", subtype="pdf", filename=RESUME.name
             )
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-            s.login(gmail, pw)
-            s.send_message(msg)
-    print("Sent.")
+        messages.append(msg)
+    return messages
 
 
 def main() -> None:
@@ -189,9 +186,12 @@ def main() -> None:
     if a.dry_run:
         for e, n in people:
             print(f"{e}  ({n})")
-        return  # DO NOT SEND EMAILS when dry run flag is set
+        return
 
-    send(people, a.company.strip() if a.company else None)
+    raise SystemExit(
+        "Sending only works through the API after Sign in with Google. "
+        "Run `uv run python app.py`, open the Next.js app, sign in, then send from the UI."
+    )
 
 
 if __name__ == "__main__":

@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { Send } from "lucide-react";
 
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-
 export function Header() {
   return (
     <header className="sticky top-0 z-50 w-screen max-w-full overflow-hidden border-b border-border/80 bg-background/90 backdrop-blur-xl">
@@ -18,37 +15,11 @@ export function Header() {
           </span>
           Outreachyr.
         </Link>
-        <nav
-          aria-label="Primary navigation"
-          className="hidden items-center gap-8 text-sm font-medium md:flex"
-        >
-          <Link
-            href="/#how-it-works"
-            className="min-h-11 content-center text-muted-foreground transition hover:text-foreground"
-          >
-            How it works
-          </Link>
-          <Link
-            href="/#pricing"
-            className="min-h-11 content-center text-muted-foreground transition hover:text-foreground"
-          >
-            Pricing
-          </Link>
-          <Link
-            href="/sign-in"
-            className="min-h-11 content-center text-muted-foreground transition hover:text-foreground"
-          >
-            Sign in
-          </Link>
-        </nav>
         <Link
-          href="/sign-up"
-          className={cn(
-            buttonVariants({ size: "lg" }),
-            "min-h-11 rounded-xl px-5 shadow-lg shadow-primary/20"
-          )}
+          href="/login"
+          className="min-h-11 content-center text-sm font-medium text-muted-foreground transition hover:text-foreground"
         >
-          Start free
+          Sign in with Google
         </Link>
       </div>
     </header>

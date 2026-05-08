@@ -1,3 +1,5 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -92,6 +94,16 @@ export function DashboardShell({
                     buttonVariants({ variant: "ghost" }),
                     "min-h-11 w-full justify-start rounded-xl px-4 text-left text-sm font-medium text-muted-foreground"
                   )}
+                  onClick={() => {
+                    if (item.label === "Sign out") {
+                      void fetch("/api/auth/logout", {
+                        method: "POST",
+                        credentials: "include",
+                      }).finally(() => {
+                        window.location.href = "/login";
+                      });
+                    }
+                  }}
                 >
                   <item.icon data-icon="inline-start" aria-hidden="true" />
                   {item.label}

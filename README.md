@@ -10,7 +10,7 @@ This repo is split into separately deployable app roots:
 1. Install uv: <https://docs.astral.sh/uv/getting-started/installation/>
 2. Go to the backend app: `cd backend`
 3. Install dependencies: `uv sync`
-4. Create a `.env` file with `SERPAPI_API_KEY`, `GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD`
+4. Create a `.env` file with `SERPAPI_API_KEY`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` (see `backend/.env.example`).
 5. Optionally modify `send.py` by adding specific recruiter emails to `TO` or changing the subject line
 6. Add your email body in the `body` file
 7. Start the API: `uv run python app.py`
