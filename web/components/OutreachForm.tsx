@@ -1,18 +1,76 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  Loader2,
+  LockKeyhole,
+  SendHorizontal,
+  Upload,
+  UsersRound,
+} from "lucide-react";
+
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { fetchCompanyKeys } from "@/lib/api";
+
+type Recipient = {
+  email?: string;
+  greeting_name?: string;
+};
+
+type SendResponse = {
+  ok?: boolean;
+  error?: string;
+  dry_run?: boolean;
+  count?: number;
+  recipients?: Recipient[];
+  sent?: number;
+};
+
+const formSteps = [
+  ["1", "Company"],
+  ["2", "Message"],
+  ["3", "Review"],
+];
 
 export function OutreachForm() {
   const [company, setCompany] = useState("");
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
-  const [dryRun, setDryRun] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [hints, setHints] = useState<string[]>([]);
-  const [out, setOut] = useState<string>("");
+  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [reviewed, setReviewed] = useState(false);
+  const [message, setMessage] = useState(
+    "Start with a company name, then preview the campaign."
+  );
   const [err, setErr] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<"preview" | "send" | null>(null);
 
   useEffect(() => {
     fetchCompanyKeys()
@@ -20,171 +78,343 @@ export function OutreachForm() {
       .catch(() => {});
   }, []);
 
-  const onSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      setLoading(true);
+  const companyReady = company.trim().length > 0;
+  const canSend = recipients.length > 0 && reviewed && loading === null;
+  const companyInvalid = err && !companyReady;
+
+  const fileLabel = useMemo(() => {
+    if (!file) return "Upload resume PDF";
+    const size = Math.max(1, Math.round(file.size / 1024));
+    return `${file.name} (${size} KB)`;
+  }, [file]);
+
+  const runCampaign = useCallback(
+    async (dryRun: boolean) => {
+      if (!companyReady) {
+        setErr(true);
+        setMessage("Enter a company name before previewing the campaign.");
+        return;
+      }
+
+      if (!dryRun && !reviewed) {
+        setErr(true);
+        setMessage("Review the recipients and message before sending.");
+        return;
+      }
+
+      setLoading(dryRun ? "preview" : "send");
       setErr(false);
-      setOut("…");
+      setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
+
       const fd = new FormData();
       fd.append("company", company.trim());
       fd.append("dry_run", dryRun ? "true" : "false");
       fd.append("subject", subject);
       fd.append("body_text", bodyText);
       if (file) fd.append("resume", file, file.name);
+
       try {
         const res = await fetch("/api/send", { method: "POST", body: fd });
-        const data = (await res.json()) as {
-          ok?: boolean;
-          error?: string;
-          dry_run?: boolean;
-          count?: number;
-          recipients?: unknown[];
-          sent?: number;
-        };
+        const data = (await res.json()) as SendResponse;
+
         if (!data.ok) {
           setErr(true);
-          setOut(data.error ?? res.statusText);
+          setMessage(data.error ?? "The campaign could not be prepared.");
           return;
         }
+
         if (data.dry_run) {
-          setOut(
-            `Dry run — ${data.count} recipient(s)\n\n${JSON.stringify(data.recipients, null, 2)}`
+          const nextRecipients = data.recipients ?? [];
+          setRecipients(nextRecipients);
+          setReviewed(false);
+          setMessage(
+            nextRecipients.length > 0
+              ? `Preview ready. Review ${
+                  data.count ?? nextRecipients.length
+                } recipient(s), then confirm if everything looks right.`
+              : "Preview finished, but no recipients were returned."
           );
         } else {
-          setOut(`Sent to ${data.sent} recipient(s).`);
+          setRecipients([]);
+          setReviewed(false);
+          setMessage(`Sent to ${data.sent ?? 0} recipient(s).`);
         }
-      } catch (x) {
+      } catch {
         setErr(true);
-        setOut(String(x));
+        setMessage(
+          "Could not reach the outreach server. Start the backend, then try preview again."
+        );
       } finally {
-        setLoading(false);
+        setLoading(null);
       }
     },
-    [company, subject, bodyText, dryRun, file]
+    [bodyText, company, companyReady, file, reviewed, subject]
   );
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="space-y-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur"
-    >
-      <div>
-        <label
-          htmlFor="company"
-          className="block text-xs font-medium uppercase tracking-wide text-zinc-500"
-        >
-          Company (mapping key)
-        </label>
-        <input
-          id="company"
-          list="company-options"
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-          placeholder="palantir"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900/80 px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-        />
-        <datalist id="company-options">
-          {hints.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        {hints.length > 0 && (
-          <p className="mt-1.5 text-xs text-zinc-600">
-            Keys: {hints.join(", ")}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label
-          htmlFor="subject"
-          className="block text-xs font-medium uppercase tracking-wide text-zinc-500"
-        >
-          Subject
-        </label>
-        <input
-          id="subject"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Optional — auto from company if blank"
-          className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-900/80 px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-        />
-      </div>
-
-      <div>
-        <label
-          htmlFor="body"
-          className="block text-xs font-medium uppercase tracking-wide text-zinc-500"
-        >
-          Email body
-        </label>
-        <textarea
-          id="body"
-          value={bodyText}
-          onChange={(e) => setBodyText(e.target.value)}
-          rows={8}
-          placeholder={`Hi __FIRST_NAME__,\n\n…`}
-          className="mt-2 w-full resize-y rounded-xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-        />
-        <p className="mt-1 text-xs text-zinc-600">
-          Empty = use server <code className="text-zinc-500">body</code> file
-        </p>
-      </div>
-
-      <div>
-        <span className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Resume (PDF)
-        </span>
-        <label className="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-zinc-900/40 px-6 py-10 text-center text-sm text-zinc-500 transition hover:border-violet-500/30 hover:bg-zinc-900/60">
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-          <span className="text-zinc-400">
-            {file ? (
-              <>
-                <span className="text-white">{file.name}</span>
-                <span className="ml-2 text-zinc-600">
-                  ({Math.round(file.size / 1024)} KB)
+    <Card className="min-w-0 max-w-[calc(100vw-2.5rem)] rounded-2xl bg-card shadow-sm sm:max-w-none">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void runCampaign(true);
+        }}
+      >
+        <CardContent className="px-4 py-2 sm:px-6">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {formSteps.map(([number, label]) => (
+              <div
+                key={label}
+                className="flex items-center gap-3 rounded-xl border border-border bg-muted px-3 py-3"
+              >
+                <Badge
+                  variant="secondary"
+                  className="size-8 shrink-0 rounded-full p-0 text-sm font-bold"
+                >
+                  {number}
+                </Badge>
+                <span className="text-sm font-semibold text-foreground">
+                  {label}
                 </span>
-              </>
-            ) : (
-              <>Drop PDF or click to upload</>
+              </div>
+            ))}
+          </div>
+
+          <Separator className="my-6" />
+
+          <FieldGroup className="lg:grid lg:grid-cols-2">
+            <Field
+              className="lg:col-span-2"
+              data-invalid={companyInvalid || undefined}
+            >
+              <FieldLabel htmlFor="company">Company name</FieldLabel>
+              <Input
+                id="company"
+                list="company-options"
+                value={company}
+                onChange={(event) => {
+                  setCompany(event.target.value);
+                  setRecipients([]);
+                  setReviewed(false);
+                }}
+                placeholder="Palantir"
+                className="min-h-12 rounded-xl px-4 text-base"
+                autoComplete="organization"
+                aria-invalid={companyInvalid || undefined}
+              />
+              <datalist id="company-options">
+                {hints.map((hint) => (
+                  <option key={hint} value={hint} />
+                ))}
+              </datalist>
+              <FieldDescription>
+                Use the company name you want recruiters matched against.
+                {hints.length > 0
+                  ? ` Available: ${hints.slice(0, 4).join(", ")}.`
+                  : ""}
+              </FieldDescription>
+            </Field>
+
+            <Field className="lg:col-span-2">
+              <FieldLabel htmlFor="subject">Subject line</FieldLabel>
+              <Input
+                id="subject"
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                placeholder="Fall 2026 software opportunities"
+                className="min-h-12 rounded-xl px-4 text-base"
+              />
+              <FieldDescription>
+                Leave blank to use the backend default subject.
+              </FieldDescription>
+            </Field>
+
+            <Field className="lg:col-span-2">
+              <FieldLabel htmlFor="body">Email message</FieldLabel>
+              <Textarea
+                id="body"
+                value={bodyText}
+                onChange={(event) => setBodyText(event.target.value)}
+                rows={8}
+                placeholder={`Hi __FIRST_NAME__,\n\nI am reaching out to learn more about Fall 2026 opportunities...`}
+                className="min-h-48 resize-y rounded-xl px-4 py-3 text-base leading-7"
+              />
+              <FieldDescription>
+                Leave blank to use the saved message in the server body file.
+              </FieldDescription>
+            </Field>
+
+            <Field className="lg:col-span-2">
+              <FieldLabel htmlFor="resume">Resume attachment</FieldLabel>
+              <label
+                htmlFor="resume"
+                className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted px-5 py-6 text-center transition hover:border-primary/40 hover:bg-accent"
+              >
+                <Input
+                  id="resume"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  onChange={(event) =>
+                    setFile(event.target.files?.[0] ?? null)
+                  }
+                />
+                <Upload aria-hidden="true" className="mb-3 size-5 text-primary" />
+                <span className="text-sm font-semibold text-foreground">
+                  {fileLabel}
+                </span>
+                <span className="mt-1 text-sm text-muted-foreground">
+                  PDF only. You can preview before sending.
+                </span>
+              </label>
+            </Field>
+          </FieldGroup>
+
+          <section className="mt-6 rounded-2xl border border-border bg-muted p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  Recruiter preview
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Preview finds recipients and keeps send locked until you
+                  review.
+                </p>
+              </div>
+              <Button
+                type="submit"
+                disabled={loading !== null}
+                size="lg"
+                className="min-h-12 rounded-xl px-6"
+              >
+                {loading === "preview" ? (
+                  <Loader2
+                    data-icon="inline-start"
+                    aria-hidden="true"
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Eye data-icon="inline-start" aria-hidden="true" />
+                )}
+                {loading === "preview" ? "Previewing..." : "Preview campaign"}
+              </Button>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3">
+              {recipients.length === 0 ? (
+                <Empty className="border border-border bg-background">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <UsersRound aria-hidden="true" />
+                    </EmptyMedia>
+                    <EmptyTitle>No recipients previewed yet</EmptyTitle>
+                    <EmptyDescription>
+                      Recipient results will appear here after preview.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                recipients.map((recipient, index) => (
+                  <div
+                    key={`${recipient.email ?? "recipient"}-${index}`}
+                    className="grid gap-3 rounded-xl border border-border bg-background p-4 sm:grid-cols-[auto_1fr_auto] sm:items-center"
+                  >
+                    <Avatar>
+                      <AvatarFallback>
+                        {recipientInitial(recipient.greeting_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {recipient.greeting_name || "Recruiter"}
+                      </p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {recipient.email || "Email unavailable"}
+                      </p>
+                    </div>
+                    <Badge className="w-fit" variant="secondary">
+                      Previewed
+                    </Badge>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <Field
+              orientation="horizontal"
+              data-disabled={recipients.length === 0 || undefined}
+              className="mt-5 rounded-xl border border-border bg-background p-4"
+            >
+              <Checkbox
+                id="reviewed"
+                checked={reviewed}
+                onCheckedChange={(checked) => setReviewed(checked === true)}
+                disabled={recipients.length === 0}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="reviewed">
+                  I reviewed the recipients, message, and resume.
+                </FieldLabel>
+                <FieldDescription>
+                  This confirmation unlocks the send button.
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <LockKeyhole aria-hidden="true" className="size-4" />
+                Send button status:
+                <Badge variant={canSend ? "default" : "secondary"}>
+                  {canSend ? "unlocked" : "locked"}
+                </Badge>
+              </div>
+              <Button
+                type="button"
+                disabled={!canSend}
+                onClick={() => void runCampaign(false)}
+                size="lg"
+                className="min-h-12 rounded-xl px-6"
+              >
+                {loading === "send" ? (
+                  <Loader2
+                    data-icon="inline-start"
+                    aria-hidden="true"
+                    className="animate-spin"
+                  />
+                ) : (
+                  <SendHorizontal data-icon="inline-start" aria-hidden="true" />
+                )}
+                {loading === "send" ? "Sending..." : "Send campaign"}
+              </Button>
+            </div>
+          </section>
+
+          <Alert
+            role={err ? "alert" : "status"}
+            variant={err ? "destructive" : "default"}
+            className={cn(
+              "mt-5",
+              !err && "border-primary/20 bg-accent text-accent-foreground"
             )}
-          </span>
-        </label>
-      </div>
-
-      <label className="flex cursor-pointer items-center gap-3">
-        <input
-          type="checkbox"
-          checked={dryRun}
-          onChange={(e) => setDryRun(e.target.checked)}
-          className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-violet-500 focus:ring-violet-500/40"
-        />
-        <span className="text-sm text-zinc-300">Dry run only</span>
-      </label>
-
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/30 transition hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50"
-      >
-        {loading ? "Working…" : "Run"}
-      </button>
-
-      <pre
-        className={`min-h-[5rem] overflow-auto rounded-xl border p-4 text-xs ${
-          err
-            ? "border-red-500/30 bg-red-950/40 text-red-200"
-            : "border-white/10 bg-black/30 text-zinc-300"
-        }`}
-      >
-        {out}
-      </pre>
-    </form>
+          >
+            {err ? (
+              <AlertCircle aria-hidden="true" />
+            ) : (
+              <CheckCircle2 aria-hidden="true" />
+            )}
+            <AlertTitle>{err ? "Needs attention" : "Campaign status"}</AlertTitle>
+            <AlertDescription
+              className={cn(!err && "text-accent-foreground/80")}
+            >
+              {message}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </form>
+    </Card>
   );
+}
+
+function recipientInitial(name?: string) {
+  return (name?.trim().charAt(0) || "R").toUpperCase();
 }

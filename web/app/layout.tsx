@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Outreachyr — Campus outreach, automated",
+  title: "Outreachyr - Recruiter outreach, reviewed first",
   description:
-    "Discover recruiter contacts and send personalized outreach. Pair with your own FastAPI backend.",
+    "Find recruiter contacts, draft personalized outreach, and review every recipient before anything is sent.",
 };
 
 export default function RootLayout({
