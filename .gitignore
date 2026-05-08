@@ -1,13 +1,18 @@
-.env
+/.env
+/backend/.env
 .mail_password
+/backend/.mail_password
 __pycache__/
+**/__pycache__/
 *.pyc
 .venv/
+/backend/.venv/
 .uv-cache/
+/backend/.uv-cache/
 test.py
 
 # Next.js
-web/node_modules/
-web/.next/
-web/out/
-web/.env*.local
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local

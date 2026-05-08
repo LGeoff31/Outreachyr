@@ -46,7 +46,7 @@ export function DashboardShell({
         <aside className="hidden border-r border-border bg-background lg:sticky lg:top-0 lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col">
           <div className="p-5">
             <Link
-              href="/dashboard"
+              href="/dashboard/new"
               className={cn(
                 buttonVariants(),
                 "min-h-10 w-full justify-start rounded-xl px-3 text-sm shadow-lg shadow-primary/15"
@@ -104,7 +104,7 @@ export function DashboardShell({
         <div className="min-w-0">
           <div className="flex items-center gap-3 border-b border-border px-5 py-4 sm:px-8 lg:hidden">
             <Link
-              href="/dashboard"
+              href="/dashboard/new"
               className={cn(buttonVariants(), "min-h-11 rounded-xl px-4")}
             >
               <Plus data-icon="inline-start" aria-hidden="true" />

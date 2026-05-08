@@ -123,12 +123,12 @@ class SendJsonRequest(BaseModel):
 
 @app.get("/")
 def root():
-    """FastAPI is API-only; run the React app from `web/` (Next.js on port 3000)."""
+    """FastAPI is API-only; run the Next.js app from `frontend/`."""
     return {
         "service": "Outreach API",
         "docs": "/docs",
         "health": "/health",
-        "frontend": "cd web && npm run dev  →  http://localhost:3000",
+        "frontend": "cd ../frontend && npm run dev -> http://localhost:3000",
     }
 
 
