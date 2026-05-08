@@ -71,7 +71,7 @@ export default function HomePage() {
   return (
     <div className="overflow-x-hidden bg-background text-foreground">
       <section className="relative overflow-hidden">
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-14 px-5 pb-16 pt-14 sm:px-8 sm:pt-16 lg:min-h-[calc(100svh-13rem)] lg:grid-cols-[0.9fr_1.05fr] lg:gap-16 lg:py-0">
+        <div className="mx-auto grid w-full max-w-[90rem] items-center gap-14 px-5 pb-16 pt-14 sm:px-8 sm:pt-16 lg:min-h-[calc(100svh-13rem)] lg:grid-cols-[0.9fr_1.05fr] lg:gap-16 lg:py-0">
           <div className="min-w-0 max-w-[calc(100vw-2.5rem)] sm:max-w-2xl">
             <h1 className="text-balance text-4xl font-semibold leading-[1.04] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
               Reach the right <span className="text-primary">recruiters.</span>
@@ -113,7 +113,7 @@ export default function HomePage() {
       </section>
 
       <section id="how-it-works" className="border-y border-border bg-muted">
-        <div className="mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 lg:pb-24 lg:pt-14">
+        <div className="mx-auto max-w-[90rem] px-5 pb-20 pt-12 sm:px-8 lg:pb-24 lg:pt-14">
           <div className="mx-auto max-w-2xl text-center">
             <Badge variant="outline" className="uppercase tracking-wide">
               How it works
@@ -147,7 +147,7 @@ export default function HomePage() {
       </section>
 
       <section id="pricing" className="bg-background">
-        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
+        <div className="mx-auto max-w-[90rem] px-5 py-20 sm:px-8">
           <div className="max-w-2xl">
             <Badge variant="outline">Pricing</Badge>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
