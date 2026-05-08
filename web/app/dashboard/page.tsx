@@ -1,83 +1,101 @@
-import { CheckCircle2 } from "lucide-react";
+import {
+  FileText,
+  HelpCircle,
+  LayoutDashboard,
+  LogOut,
+  Mail,
+  Plus,
+  Send,
+  Settings,
+  UserRound,
+} from "lucide-react";
 
 import { OutreachForm } from "@/components/OutreachForm";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 export const metadata = {
   title: "Campaign builder - Outreachyr",
 };
 
-const checklist = [
-  "Make sure the company name matches your intended employer.",
-  "Read the subject and opening message before previewing.",
-  "Confirm recipients and resume attachment before sending.",
+const primaryNav = [
+  { label: "Dashboard", icon: LayoutDashboard, active: true },
+  { label: "Campaigns", icon: Send },
+  { label: "Templates", icon: FileText },
+  { label: "Resumes", icon: Mail },
+  { label: "Settings", icon: Settings },
+];
+
+const utilityNav = [
+  { label: "Help", icon: HelpCircle },
+  { label: "Sign out", icon: LogOut },
 ];
 
 export default function DashboardPage() {
   return (
-    <div className="min-h-[calc(100vh-4rem)] overflow-x-hidden bg-muted">
-      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-12">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 max-w-[calc(100vw-2.5rem)] sm:max-w-3xl">
-            <Badge variant="secondary">Campaign builder</Badge>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-5xl">
-              Preview the outreach campaign before anything sends.
-            </h1>
-            <p className="mt-4 text-lg leading-8 text-muted-foreground">
-              Add a company, confirm the message, attach a resume, and preview
-              matched recruiters. Sending stays locked until you check the final
-              review box.
-            </p>
+    <div className="min-h-[calc(100vh-4rem)] overflow-x-hidden bg-background">
+      <div className="lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <aside className="hidden border-r border-border bg-background lg:sticky lg:top-16 lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col">
+          <div className="p-6">
+            <Button className="min-h-12 w-full justify-start rounded-xl px-4 text-base">
+              <Plus data-icon="inline-start" aria-hidden="true" />
+              New campaign
+            </Button>
           </div>
-          <Alert className="max-w-[calc(100vw-2.5rem)] border-primary/20 bg-accent text-accent-foreground lg:max-w-sm">
-            <CheckCircle2 aria-hidden="true" />
-            <AlertTitle>Review mode is on.</AlertTitle>
-            <AlertDescription className="text-accent-foreground/80">
-              Previewing recruiters is separate from sending email.
-            </AlertDescription>
-          </Alert>
-        </div>
 
-        <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <nav
+            aria-label="Dashboard navigation"
+            className="flex flex-1 flex-col gap-1 px-4"
+          >
+            {primaryNav.map((item) => (
+              <Button
+                key={item.label}
+                type="button"
+                variant="ghost"
+                className={cn(
+                  "min-h-12 w-full justify-start rounded-xl px-4 text-left text-sm font-medium text-muted-foreground",
+                  item.active &&
+                    "bg-accent text-primary shadow-sm shadow-primary/5 hover:bg-accent hover:text-primary"
+                )}
+              >
+                <item.icon aria-hidden="true" className="size-5" />
+                {item.label}
+              </Button>
+            ))}
+          </nav>
+
+          <div className="px-4 pb-6">
+            <Separator className="mb-4" />
+            <div className="flex flex-col gap-1">
+              {utilityNav.map((item) => (
+                <Button
+                  key={item.label}
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11 w-full justify-start rounded-xl px-4 text-left text-sm font-medium text-muted-foreground"
+                >
+                  <item.icon aria-hidden="true" className="size-5" />
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className="min-w-0">
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4 sm:px-8 lg:hidden">
+            <Button className="min-h-11 rounded-xl px-4">
+              <Plus data-icon="inline-start" aria-hidden="true" />
+              New campaign
+            </Button>
+            <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground">
+              <UserRound aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate">Dashboard</span>
+            </div>
+          </div>
+
           <OutreachForm />
-          <Card className="h-fit rounded-2xl bg-card shadow-sm">
-            <CardHeader className="px-6">
-              <CardTitle className="text-lg">Review checklist</CardTitle>
-              <CardDescription>
-                Use this pass before unlocking the final send action.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-6">
-              <ol className="flex flex-col gap-4 text-sm leading-6 text-muted-foreground">
-                {checklist.map((item, index) => (
-                  <li key={item} className="flex gap-3">
-                    <Badge
-                      variant="secondary"
-                      className="mt-0.5 size-6 shrink-0 rounded-full p-0 text-xs font-bold"
-                    >
-                      {index + 1}
-                    </Badge>
-                    {item}
-                  </li>
-                ))}
-              </ol>
-              <Alert className="mt-6 bg-foreground text-background">
-                <CheckCircle2 aria-hidden="true" />
-                <AlertDescription className="text-background/80">
-                  Outreachyr shows the final recipient list first. If anything
-                  looks wrong, change the fields and preview again.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>

@@ -35,14 +35,14 @@ export function Header() {
             Pricing
           </Link>
           <Link
-            href="/dashboard"
+            href="/sign-in"
             className="min-h-11 content-center text-muted-foreground transition hover:text-foreground"
           >
             Sign in
           </Link>
         </nav>
         <Link
-          href="/dashboard"
+          href="/sign-up"
           className={cn(
             buttonVariants({ size: "lg" }),
             "min-h-11 rounded-xl px-5 shadow-lg shadow-primary/20"

@@ -83,7 +83,7 @@ export default function HomePage() {
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link
-                href="/dashboard"
+                href="/sign-up"
                 className={cn(
                   buttonVariants({ size: "lg" }),
                   "min-h-14 rounded-xl px-8 text-base shadow-xl shadow-primary/20"
@@ -266,7 +266,7 @@ function CampaignPreview() {
               Send unlocks after every recipient and message is reviewed.
             </p>
             <Link
-              href="/dashboard"
+              href="/sign-up"
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "min-h-11 rounded-xl px-5"
