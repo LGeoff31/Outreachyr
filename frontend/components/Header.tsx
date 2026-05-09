@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Send } from "lucide-react";
 
+import { HeaderAuth } from "@/components/HeaderAuth";
+
 export function Header() {
   return (
     <header className="sticky top-0 z-50 w-screen max-w-full overflow-hidden border-b border-border/80 bg-background/90 backdrop-blur-xl">
@@ -15,12 +17,7 @@ export function Header() {
           </span>
           Outreachyr.
         </Link>
-        <Link
-          href="/login"
-          className="min-h-11 content-center text-sm font-medium text-muted-foreground transition hover:text-foreground"
-        >
-          Sign in with Google
-        </Link>
+        <HeaderAuth />
       </div>
     </header>
   );
