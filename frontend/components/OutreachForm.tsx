@@ -141,7 +141,7 @@ export function OutreachForm() {
           setErr(true);
           const authHint =
             res.status === 401 || data.auth_required
-              ? " Sign in with Google from the header or /login."
+              ? " Sign in from the header or /login."
               : "";
           setMessage(
             (data.error ?? "The campaign could not be prepared.") + authHint

@@ -86,9 +86,12 @@ export function HeaderAuth() {
     return (
       <Link
         href="/login"
-        className="min-h-11 content-center text-sm font-medium text-muted-foreground transition hover:text-foreground"
+        className={cn(
+          buttonVariants({ variant: "default", size: "sm" }),
+          "min-h-10 rounded-xl px-4 shadow-sm shadow-primary/20"
+        )}
       >
-        Sign in with Google
+        Sign in
       </Link>
     );
   }
