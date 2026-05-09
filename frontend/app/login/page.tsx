@@ -6,12 +6,11 @@ import { Suspense, type SVGProps, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-type MeResponse = {
-  authenticated?: boolean;
-  oauth_required?: boolean;
-  email?: string | null;
-};
+import { GOOGLE_OAUTH_SCOPES } from "@/lib/auth";
+import {
+  createClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 function GoogleLogo(props: SVGProps<SVGSVGElement>) {
   return (
@@ -41,31 +40,83 @@ function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const err = searchParams.get("error");
-  const [oauthReady, setOauthReady] = useState<boolean | null>(null);
+  const supabaseConfigured = isSupabaseConfigured();
+  const [checkingSession, setCheckingSession] = useState(supabaseConfigured);
+  const [startingLogin, setStartingLogin] = useState(false);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => r.json() as Promise<MeResponse>)
-      .then((d) => {
-        if (d.oauth_required && d.authenticated) {
+    if (!supabaseConfigured) return;
+
+    let cancelled = false;
+    const supabase = createClient();
+
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data.user) {
           router.replace("/dashboard");
           return;
         }
-        setOauthReady(d.oauth_required === true);
+        setCheckingSession(false);
       })
-      .catch(() => setOauthReady(false));
-  }, [router]);
+      .catch(() => {
+        if (!cancelled) setCheckingSession(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, supabaseConfigured]);
 
   const errorMessage =
     err === "access_denied"
       ? "Google sign-in was canceled."
       : err === "invalid_state"
         ? "Login session expired. Try again."
-        : err === "exchange"
-          ? "Could not finish Google login. Try again or revoke app access under Google Account permissions and retry."
-          : err
-            ? "Something went wrong with Google sign-in."
-            : null;
+        : err === "missing_code"
+          ? "Google did not return a login code. Try again."
+          : err === "supabase_config"
+            ? "Supabase Auth is not configured for this frontend."
+            : err === "gmail_token"
+              ? "Google did not return Gmail offline access. Revoke app access under Google Account permissions, then sign in again."
+              : err === "google_backend_config"
+                ? "The backend is missing Google OAuth credentials."
+                : err === "supabase_backend_config"
+                  ? "The backend is missing Supabase Auth credentials. Restart the backend after adding them."
+                  : err === "supabase_session"
+                    ? "The backend could not verify the Supabase session."
+              : err === "gmail_session"
+                ? "Could not connect the Gmail sending session. Try signing in again."
+                : err === "exchange"
+                  ? "Could not finish Google login. Try again or revoke app access under Google Account permissions and retry."
+                  : err
+                    ? "Something went wrong with Google sign-in."
+                    : null;
+
+  async function signInWithGoogle() {
+    setStartingLogin(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+          scopes: GOOGLE_OAUTH_SCOPES,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+
+      if (error) {
+        setStartingLogin(false);
+      }
+    } catch {
+      setStartingLogin(false);
+    }
+  }
 
   return (
     <section className="flex min-h-[calc(100svh-4rem)] items-center justify-center bg-background px-4 py-10">
@@ -81,17 +132,17 @@ function LoginInner() {
               {errorMessage}
             </p>
           ) : null}
-          {oauthReady === false ? (
+          {!supabaseConfigured ? (
             <p className="text-sm text-muted-foreground">
-              Google OAuth is not configured on the API server. Add{" "}
+              Supabase Auth is not configured for this frontend. Add{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                GOOGLE_CLIENT_ID
+                NEXT_PUBLIC_SUPABASE_URL
               </code>{" "}
               and{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                GOOGLE_CLIENT_SECRET
+                NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
               </code>{" "}
-              to your backend{" "}
+              to your frontend{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code>
               .
             </p>
@@ -101,13 +152,13 @@ function LoginInner() {
             variant="outline"
             size="lg"
             className="min-h-12 w-full rounded-xl text-base font-semibold shadow-sm"
-            disabled={oauthReady !== true}
-            onClick={() => {
-              window.location.href = "/api/auth/google/start";
-            }}
+            disabled={!supabaseConfigured || checkingSession || startingLogin}
+            onClick={() => void signInWithGoogle()}
           >
-            {oauthReady === null ? (
-              "Checking setup..."
+            {checkingSession ? (
+              "Checking session..."
+            ) : startingLogin ? (
+              "Opening Google..."
             ) : (
               <>
                 <GoogleLogo className="size-5" />

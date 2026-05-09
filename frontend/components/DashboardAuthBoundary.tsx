@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-type MeResponse = {
-  authenticated?: boolean;
-  oauth_required?: boolean;
-  email?: string | null;
-};
+import {
+  createClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 export function DashboardAuthBoundary({
   children,
@@ -20,19 +19,27 @@ export function DashboardAuthBoundary({
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      router.replace("/login");
+      setReady(true);
+      return;
+    }
+
     let cancelled = false;
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => r.json() as Promise<MeResponse>)
-      .then((data) => {
+    const supabase = createClient();
+
+    supabase.auth
+      .getUser()
+      .then(({ data, error }) => {
         if (cancelled) return;
-        if (data.oauth_required && !data.authenticated) {
+        if (error || !data.user) {
           router.replace("/login");
           return;
         }
         setAllowed(true);
       })
       .catch(() => {
-        if (!cancelled) setAllowed(true);
+        if (!cancelled) router.replace("/login");
       })
       .finally(() => {
         if (!cancelled) setReady(true);

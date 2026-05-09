@@ -5,13 +5,12 @@ import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
+import { signOutEverywhere } from "@/lib/auth";
+import {
+  createClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-
-type MeResponse = {
-  authenticated?: boolean;
-  oauth_required?: boolean;
-  email?: string | null;
-};
 
 function initialsFromEmail(email: string) {
   const local = email.split("@")[0] ?? "";
@@ -22,16 +21,39 @@ function initialsFromEmail(email: string) {
 }
 
 export function HeaderAuth() {
-  const [me, setMe] = useState<MeResponse | null>(null);
+  const [email, setEmail] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => r.json() as Promise<MeResponse>)
-      .then(setMe)
-      .catch(() => setMe({ oauth_required: false, authenticated: false }));
+    if (!isSupabaseConfigured()) {
+      setEmail(null);
+      return;
+    }
+
+    let cancelled = false;
+    const supabase = createClient();
+
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (!cancelled) setEmail(data.user?.email ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setEmail(null);
+      });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setEmail(session?.user.email ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  if (me === null) {
+  if (email === undefined) {
     return (
       <div
         className="flex min-h-11 items-center gap-3"
@@ -43,21 +65,21 @@ export function HeaderAuth() {
     );
   }
 
-  if (me.authenticated && me.email) {
+  if (email) {
     return (
       <div className="flex min-h-11 max-w-[min(100vw-8rem,28rem)] items-center gap-2 sm:gap-3">
         <Link
           href="/dashboard"
-          title={me.email}
+          title={email}
           className="flex min-w-0 items-center gap-2 rounded-xl py-1 pr-1 transition hover:bg-accent/60 sm:gap-3 sm:pr-2"
         >
           <Avatar className="size-9 shrink-0">
             <AvatarFallback className="text-xs font-semibold">
-              {initialsFromEmail(me.email)}
+              {initialsFromEmail(email)}
             </AvatarFallback>
           </Avatar>
           <span className="hidden min-w-0 truncate text-sm font-medium text-foreground sm:inline">
-            {me.email}
+            {email}
           </span>
         </Link>
         <button
@@ -67,11 +89,8 @@ export function HeaderAuth() {
             "shrink-0 rounded-xl px-3 text-muted-foreground hover:text-foreground"
           )}
           onClick={() => {
-            void fetch("/api/auth/logout", {
-              method: "POST",
-              credentials: "include",
-            }).finally(() => {
-              setMe({ oauth_required: true, authenticated: false });
+            void signOutEverywhere().finally(() => {
+              setEmail(null);
               window.location.href = "/";
             });
           }}
@@ -82,29 +101,15 @@ export function HeaderAuth() {
     );
   }
 
-  if (me.oauth_required) {
-    return (
-      <Link
-        href="/login"
-        className={cn(
-          buttonVariants({ variant: "default", size: "sm" }),
-          "min-h-10 rounded-xl px-4 shadow-sm shadow-primary/20"
-        )}
-      >
-        Sign in
-      </Link>
-    );
-  }
-
   return (
     <Link
-      href="/dashboard"
+      href="/login"
       className={cn(
-        buttonVariants({ variant: "ghost", size: "sm" }),
-        "min-h-11 rounded-xl text-muted-foreground hover:text-foreground"
+        buttonVariants({ variant: "default", size: "sm" }),
+        "min-h-10 rounded-xl px-4 shadow-sm shadow-primary/20"
       )}
     >
-      Dashboard
+      Sign in
     </Link>
   );
 }

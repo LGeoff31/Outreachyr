@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import logging
+import json
 import secrets
 from contextlib import asynccontextmanager
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import Cookie, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +21,9 @@ from config import (
     frontend_origins,
     google_oauth_configured,
     load_dotenv,
+    supabase_auth_configured,
+    supabase_publishable_key,
+    supabase_url,
 )
 from gmail_send_oauth import send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
@@ -213,6 +218,34 @@ class SendJsonRequest(BaseModel):
     body_text: str = Field("")
 
 
+class GoogleSessionRequest(BaseModel):
+    access_token: str = Field(..., min_length=1)
+    provider_refresh_token: str = Field(..., min_length=1)
+
+
+def _verify_supabase_user(access_token: str) -> dict:
+    req = UrlRequest(
+        f"{supabase_url().rstrip('/')}/auth/v1/user",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": supabase_publishable_key(),
+        },
+    )
+    try:
+        with urlopen(req, timeout=30) as r:
+            data = json.loads(r.read().decode())
+    except HTTPError as e:
+        raise RuntimeError(f"Supabase Auth rejected the session: HTTP {e.code}") from e
+    except (OSError, URLError) as e:
+        raise RuntimeError(f"Could not reach Supabase Auth: {e}") from e
+
+    email = (data.get("email") or "").strip()
+    user_id = (data.get("id") or "").strip()
+    if not email or not user_id:
+        raise RuntimeError("Supabase Auth did not return a usable user.")
+    return {"email": email, "id": user_id}
+
+
 @app.get("/")
 def root():
     """FastAPI is API-only; run the Next.js app from `frontend/`."""
@@ -231,60 +264,61 @@ def api_companies():
 
 @app.get("/api/auth/google/start")
 def auth_google_start():
-    if not google_oauth_configured():
-        return JSONResponse(
-            status_code=503,
-            content={"error": "Google OAuth is not configured on this server."},
-        )
-    try:
-        url, state = google_auth.authorization_url()
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Could not start Google login: {e}"},
-        )
-    response = RedirectResponse(url=url, status_code=302)
-    response.set_cookie(
-        key="oauth_csrf",
-        value=state,
-        max_age=600,
-        httponly=True,
-        samesite="lax",
-        path="/",
+    return JSONResponse(
+        status_code=410,
+        content={"error": "Google sign-in is handled by Supabase Auth."},
     )
-    return response
 
 
 @app.get("/api/auth/google/callback")
-def auth_google_callback(request: Request):
+def auth_google_callback():
     base = frontend_base_url()
+    return RedirectResponse(
+        url=f"{base}/login?error=supabase_auth_required",
+        status_code=302,
+    )
+
+
+@app.post("/api/auth/google/session")
+def auth_google_session(body: GoogleSessionRequest):
     if not google_oauth_configured():
-        return RedirectResponse(url=f"{base}/login?error=oauth_disabled", status_code=302)
-
-    err = request.query_params.get("error")
-    if err:
-        return RedirectResponse(url=f"{base}/login?error={err}", status_code=302)
-
-    code = request.query_params.get("code")
-    state = request.query_params.get("state")
-    cookie = request.cookies.get("oauth_csrf")
-    if not code or not state or not cookie or state != cookie:
-        return RedirectResponse(url=f"{base}/login?error=invalid_state", status_code=302)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "code": "google_backend_config",
+                "error": "Google OAuth is not configured.",
+            },
+        )
+    if not supabase_auth_configured():
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "code": "supabase_backend_config",
+                "error": "Supabase Auth is not configured.",
+            },
+        )
 
     try:
-        creds, email = google_auth.exchange_code(code, state)
-    except Exception:
-        logging.exception("OAuth token exchange failed")
-        return RedirectResponse(url=f"{base}/login?error=exchange", status_code=302)
+        user = _verify_supabase_user(body.access_token.strip())
+    except RuntimeError as e:
+        return JSONResponse(
+            status_code=401,
+            content={"ok": False, "code": "supabase_session", "error": str(e)},
+        )
 
     session_id = secrets.token_urlsafe(32)
     session_store.upsert(
         session_id,
-        {"refresh_token": creds.refresh_token, "email": email},
+        {
+            "refresh_token": body.provider_refresh_token.strip(),
+            "email": user["email"],
+            "supabase_user_id": user["id"],
+        },
     )
 
-    response = RedirectResponse(url=f"{base}/dashboard", status_code=302)
-    response.delete_cookie("oauth_csrf", path="/")
+    response = JSONResponse({"ok": True})
     response.set_cookie(
         key="outreach_session",
         value=session_id,

@@ -15,6 +15,7 @@ import {
 
 import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { signOutEverywhere } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 type DashboardSection = "Campaigns" | "Templates" | "Resumes" | "Settings";
@@ -96,10 +97,7 @@ export function DashboardShell({
                   )}
                   onClick={() => {
                     if (item.label === "Sign out") {
-                      void fetch("/api/auth/logout", {
-                        method: "POST",
-                        credentials: "include",
-                      }).finally(() => {
+                      void signOutEverywhere().finally(() => {
                         window.location.href = "/login";
                       });
                     }

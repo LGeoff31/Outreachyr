@@ -19,6 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 UPGRADE_STATEMENTS = [
     "create extension if not exists pgcrypto",
+    "create schema if not exists private",
     """
     create table if not exists public.profiles (
       id uuid primary key references auth.users(id) on delete cascade,
@@ -65,6 +66,33 @@ UPGRADE_STATEMENTS = [
       sent_at timestamptz,
       constraint campaign_recipients_campaign_id_email_key unique (campaign_id, email)
     )
+    """,
+    """
+    create or replace function private.handle_new_user()
+    returns trigger
+    language plpgsql
+    security definer
+    set search_path = ''
+    as $$
+    begin
+      insert into public.profiles (id, email, full_name)
+      values (
+        new.id,
+        new.email,
+        coalesce(
+          new.raw_user_meta_data ->> 'full_name',
+          new.raw_user_meta_data ->> 'name'
+        )
+      );
+      return new;
+    end;
+    $$
+    """,
+    "drop trigger if exists on_auth_user_created on auth.users",
+    """
+    create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function private.handle_new_user()
     """,
     "create index if not exists templates_owner_id_idx on public.templates(owner_id)",
     "create index if not exists campaigns_owner_id_idx on public.campaigns(owner_id)",
@@ -126,6 +154,9 @@ UPGRADE_STATEMENTS = [
 ]
 
 DOWNGRADE_STATEMENTS = [
+    "drop trigger if exists on_auth_user_created on auth.users",
+    "drop function if exists private.handle_new_user()",
+    "drop schema if exists private",
     'drop policy if exists "Users manage own campaign recipients" on public.campaign_recipients',
     'drop policy if exists "Users manage own campaigns" on public.campaigns',
     'drop policy if exists "Users manage own templates" on public.templates',
