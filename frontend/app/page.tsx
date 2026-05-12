@@ -54,6 +54,26 @@ export default function HomePage() {
               <Lock aria-hidden="true" className="size-5 text-foreground" />
               Nothing is sent without your review.
             </p>
+            <div className="mt-10 flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:items-center">
+              <Link
+                href="/dashboard"
+                className={cn(
+                  buttonVariants({ size: "lg" }),
+                  "min-h-12 w-full justify-center rounded-xl px-6 text-base font-semibold shadow-lg shadow-primary/15 sm:w-auto"
+                )}
+              >
+                Open dashboard
+              </Link>
+              <Link
+                href="/dashboard/new"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "min-h-12 w-full justify-center rounded-xl px-6 text-base font-semibold sm:w-auto"
+                )}
+              >
+                New campaign
+              </Link>
+            </div>
           </div>
 
           <CampaignPreview />

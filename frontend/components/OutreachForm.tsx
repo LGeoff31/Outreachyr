@@ -78,6 +78,7 @@ const mergeFields = ["{{first_name}}", "{{company}}", "{{role}}"];
 
 export function OutreachForm() {
   const [company, setCompany] = useState(defaultCompany);
+  const [testMode, setTestMode] = useState(false);
   const [subject, setSubject] = useState(defaultSubject);
   const [bodyText, setBodyText] = useState(defaultMessage);
   const [file, setFile] = useState<File | null>(null);
@@ -96,7 +97,8 @@ export function OutreachForm() {
       .catch(() => {});
   }, []);
 
-  const companyReady = company.trim().length > 0;
+  const companyReady =
+    testMode || company.trim().length > 0;
   const canSend = recipients.length > 0 && reviewed && loading === null;
   const companyInvalid = err && !companyReady;
 
@@ -125,6 +127,7 @@ export function OutreachForm() {
       const fd = new FormData();
       fd.append("company", company.trim());
       fd.append("dry_run", dryRun ? "true" : "false");
+      fd.append("test_mode", testMode ? "true" : "false");
       fd.append("subject", subject);
       fd.append("body_text", bodyText);
       if (file) fd.append("resume", file, file.name);
@@ -154,16 +157,22 @@ export function OutreachForm() {
           setRecipients(nextRecipients);
           setReviewed(false);
           setMessage(
-            nextRecipients.length > 0
-              ? `Dry run found ${
-                  data.count ?? nextRecipients.length
-                } recipient(s). Review each message before sending.`
-              : "Dry run finished, but no recipients were returned."
+            nextRecipients.length === 0
+              ? "Dry run finished, but no recipients were returned."
+              : testMode
+                ? `Test mode: loaded ${data.count ?? nextRecipients.length} fake address(es) (cyz1@test.com, …). Review, then send to confirm Gmail delivery.`
+                : `Dry run found ${
+                    data.count ?? nextRecipients.length
+                  } recipient(s). Review each message before sending.`
           );
         } else {
           setRecipients([]);
           setReviewed(false);
-          setMessage(`Sent to ${data.sent ?? 0} recipient(s).`);
+          setMessage(
+            testMode
+              ? `Sent to ${data.sent ?? 0} test address(es). Confirm delivery in Gmail or at the cyz* inboxes.`
+              : `Sent to ${data.sent ?? 0} recipient(s).`
+          );
         }
       } catch {
         setErr(true);
@@ -174,7 +183,7 @@ export function OutreachForm() {
         setLoading(null);
       }
     },
-    [bodyText, company, companyReady, file, reviewed, subject]
+    [bodyText, company, companyReady, file, reviewed, subject, testMode]
   );
 
   return (
@@ -234,6 +243,30 @@ export function OutreachForm() {
                     ? ` Available: ${hints.slice(0, 4).join(", ")}.`
                     : ""}
                 </FieldDescription>
+                <Field orientation="horizontal" className="mt-4 rounded-xl border border-border/80 bg-muted/40 px-4 py-3">
+                  <Checkbox
+                    id="test-mode"
+                    checked={testMode}
+                    onCheckedChange={(checked) => {
+                      setTestMode(checked === true);
+                      setRecipients([]);
+                      setReviewed(false);
+                    }}
+                  />
+                  <FieldContent>
+                    <FieldLabel htmlFor="test-mode" className="font-semibold">
+                      Test mode
+                    </FieldLabel>
+                    <FieldDescription className="text-xs leading-5">
+                      Skip search and preview{" "}
+                      <span className="font-medium text-foreground">
+                        cyz1@test.com … cyz4@test.com
+                      </span>{" "}
+                      so you can send real messages through Gmail and confirm the
+                      pipeline. Use addresses you control or expect bounces.
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
               </Field>
             </SetupCard>
 
@@ -348,6 +381,7 @@ export function OutreachForm() {
             recipients={recipients}
             bodyText={bodyText}
             company={company}
+            testMode={testMode}
             loading={loading}
             err={err}
             message={message}
@@ -464,6 +498,7 @@ function ReviewPanel({
   recipients,
   bodyText,
   company,
+  testMode,
   loading,
   err,
   message,
@@ -471,6 +506,7 @@ function ReviewPanel({
   recipients: Recipient[];
   bodyText: string;
   company: string;
+  testMode: boolean;
   loading: "preview" | "send" | null;
   err: boolean;
   message: string;
@@ -487,6 +523,11 @@ function ReviewPanel({
           </Badge>
           <CardTitle className="text-lg">
             Review recipients ({recipients.length})
+            {testMode ? (
+              <Badge variant="outline" className="ml-2 align-middle text-xs font-medium">
+                Test mode
+              </Badge>
+            ) : null}
           </CardTitle>
         </div>
         <CardAction>
@@ -520,7 +561,9 @@ function ReviewPanel({
                 </EmptyMedia>
                 <EmptyTitle>No recipients yet</EmptyTitle>
                 <EmptyDescription>
-                  Run a dry run to find recruiter contacts and preview messages.
+                  {testMode
+                    ? "Run Dry run to load fake test addresses (no SerpAPI)."
+                    : "Run a dry run to find recruiter contacts and preview messages."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
