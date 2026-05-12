@@ -1,0 +1,30 @@
+import Link from "next/link";
+
+export function SiteFooter() {
+  return (
+    <footer className="border-t border-border/80 bg-muted/30">
+      <div className="mx-auto flex max-w-[90rem] flex-wrap items-center justify-center gap-x-6 gap-y-2 px-5 py-6 text-sm text-muted-foreground sm:justify-between sm:px-8">
+        <p className="text-center sm:text-left">
+          © {new Date().getFullYear()} Outreachyr
+        </p>
+        <nav
+          aria-label="Legal"
+          className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1"
+        >
+          <Link
+            href="/privacy"
+            className="font-medium text-foreground/80 underline-offset-4 transition hover:text-foreground hover:underline"
+          >
+            Privacy Policy
+          </Link>
+          <Link
+            href="/terms"
+            className="font-medium text-foreground/80 underline-offset-4 transition hover:text-foreground hover:underline"
+          >
+            Terms of Service
+          </Link>
+        </nav>
+      </div>
+    </footer>
+  );
+}

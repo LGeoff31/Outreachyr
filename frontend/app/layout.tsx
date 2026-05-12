@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Header } from "@/components/Header";
+import { SiteFooter } from "@/components/SiteFooter";
 import "./globals.css";
 
 const geist = Geist({
@@ -32,6 +33,7 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <Header />
         <main>{children}</main>
+        <SiteFooter />
       </body>
     </html>
   );
