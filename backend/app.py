@@ -152,49 +152,54 @@ def _run_send(
     *,
     company: str,
     dry_run: bool,
+    test_mode: bool,
     subject: str,
     body_text: str,
     resume_bytes: bytes | None,
     resume_filename: str,
 ):
     company = company.strip()
-    if not company:
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "error": "Enter a company name."},
-        )
+    if test_mode:
+        company = company or "Sample Company (test mode)"
+        people = outreach.test_recipients()
+    else:
+        if not company:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Enter a company name."},
+            )
 
-    if domain_for_company(company) is None:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "ok": False,
-                "error": (
-                    f'Company "{company}" is not in mapping.py — '
-                    "add COMPANY_EMAIL_HOST entry."
-                ),
-            },
-        )
+        if domain_for_company(company) is None:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": (
+                        f'Company "{company}" is not in mapping.py — '
+                        "add COMPANY_EMAIL_HOST entry."
+                    ),
+                },
+            )
 
-    try:
-        people = outreach.discover(company)
-    except RuntimeError as e:
-        return JSONResponse(
-            status_code=502,
-            content={"ok": False, "error": str(e)},
-        )
+        try:
+            people = outreach.discover(company)
+        except RuntimeError as e:
+            return JSONResponse(
+                status_code=502,
+                content={"ok": False, "error": str(e)},
+            )
 
-    if not people:
-        return JSONResponse(
-            status_code=404,
-            content={
-                "ok": False,
-                "error": (
-                    "No addresses inferred from search "
-                    "(SerpAPI returned nothing usable)."
-                ),
-            },
-        )
+        if not people:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "error": (
+                        "No addresses inferred from search "
+                        "(SerpAPI returned nothing usable)."
+                    ),
+                },
+            )
 
     subj = subject.strip() or None
     body_opt = body_text if body_text.strip() else None
@@ -214,6 +219,7 @@ def _run_send(
 class SendJsonRequest(BaseModel):
     company: str = Field("", description="Mapping key")
     dry_run: bool = Field(True)
+    test_mode: bool = Field(False)
     subject: str = Field("")
     body_text: str = Field("")
 
@@ -358,8 +364,9 @@ def auth_logout(outreach_session: str | None = Cookie(default=None)):
 @app.post("/api/send")
 async def api_send_multipart(
     request: Request,
-    company: str = Form(...),
+    company: str = Form(""),
     dry_run: str = Form("true"),
+    test_mode: str = Form("false"),
     subject: str = Form(""),
     body_text: str = Form(""),
     resume: UploadFile | None = File(None),
@@ -373,6 +380,7 @@ async def api_send_multipart(
         request,
         company=company,
         dry_run=_parse_bool(dry_run),
+        test_mode=_parse_bool(test_mode),
         subject=subject,
         body_text=body_text,
         resume_bytes=rbytes,
@@ -386,6 +394,7 @@ def api_send_json(request: Request, body: SendJsonRequest):
         request,
         company=body.company,
         dry_run=body.dry_run,
+        test_mode=body.test_mode,
         subject=body.subject,
         body_text=body.body_text,
         resume_bytes=None,
