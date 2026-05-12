@@ -7,4 +7,5 @@ COMPANY_EMAIL_HOST = {
     "roblox": "roblox.com",
     "amazon": "amazon.jobs",
     "shopify": "shopify.com",
+    "capital one": "capitalone.com",
 }
