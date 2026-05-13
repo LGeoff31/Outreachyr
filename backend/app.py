@@ -25,6 +25,7 @@ from config import (
 from gmail_send_oauth import send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
 from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
+from email_template_api import router as email_template_router
 from user_resume_api import router as user_resume_router
 from utils import domain_for_company
 
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Outreach API", version="0.1.0", lifespan=lifespan)
 
 app.include_router(user_resume_router)
+app.include_router(email_template_router)
 
 app.add_middleware(
     CORSMiddleware,

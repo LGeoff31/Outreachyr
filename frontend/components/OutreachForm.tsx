@@ -51,6 +51,11 @@ import { cn } from "@/lib/utils";
 import { fetchCompanyKeys } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
+  createEmailTemplate,
+  fetchEmailTemplateRows,
+  type EmailTemplateRow as SavedEmailTemplate,
+} from "@/lib/supabase/emailTemplates";
+import {
   fetchUserResumeRows,
   resumeApiAuthHeaders,
   type UserResumeRow,
@@ -97,6 +102,18 @@ export function OutreachForm() {
     string | null
   >(null);
   const [libraryAttachLoading, setLibraryAttachLoading] = useState(false);
+  const [savedTemplates, setSavedTemplates] = useState<SavedEmailTemplate[]>([]);
+  const [savedTemplatesLoading, setSavedTemplatesLoading] = useState(false);
+  const [savedTemplatesError, setSavedTemplatesError] = useState<string | null>(
+    null
+  );
+  const [selectedSavedTemplateId, setSelectedSavedTemplateId] = useState<
+    string | null
+  >(null);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [saveTemplateName, setSaveTemplateName] = useState("");
+  const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
+  const [saveTemplateErr, setSaveTemplateErr] = useState<string | null>(null);
   const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [reviewed, setReviewed] = useState(false);
@@ -166,12 +183,37 @@ export function OutreachForm() {
     };
   }, [applyLibraryResume]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    let cancelled = false;
+    (async () => {
+      setSavedTemplatesLoading(true);
+      setSavedTemplatesError(null);
+      try {
+        const { rows, error } = await fetchEmailTemplateRows();
+        if (cancelled) return;
+        if (error) {
+          setSavedTemplates([]);
+          setSavedTemplatesError(error.message);
+          return;
+        }
+        setSavedTemplates(rows);
+      } finally {
+        if (!cancelled) setSavedTemplatesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const companyReady =
     testMode || company.trim().length > 0;
   const canSend = recipients.length > 0 && reviewed && loading === null;
   const companyInvalid = err && !companyReady;
 
   const appendMergeField = useCallback((token: string) => {
+    setSelectedSavedTemplateId(null);
     setBodyText((current) => `${current}${current.endsWith("\n") ? "" : " "}${token}`);
   }, []);
 
@@ -341,12 +383,71 @@ export function OutreachForm() {
 
             <SetupCard number="2" title="Email content">
               <FieldGroup className="gap-3">
+                {isSupabaseConfigured() ? (
+                  <Field>
+                    <FieldLabel htmlFor="saved-template">
+                      Use a saved template
+                    </FieldLabel>
+                    <select
+                      id="saved-template"
+                      disabled={
+                        savedTemplatesLoading || savedTemplates.length === 0
+                      }
+                      value={selectedSavedTemplateId ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          setSelectedSavedTemplateId(null);
+                          setSavedTemplatesError(null);
+                          return;
+                        }
+                        const row = savedTemplates.find((t) => t.id === value);
+                        if (!row) return;
+                        setSubject(row.subject);
+                        setBodyText(row.body_text);
+                        setSelectedSavedTemplateId(row.id);
+                        setSavedTemplatesError(null);
+                      }}
+                      className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <option value="">
+                        {savedTemplatesLoading
+                          ? "Loading templates…"
+                          : savedTemplates.length === 0
+                            ? "No saved templates yet"
+                            : "Choose a template…"}
+                      </option>
+                      {savedTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                    {savedTemplatesError ? (
+                      <p className="mt-2 text-xs text-destructive" role="alert">
+                        {savedTemplatesError}
+                      </p>
+                    ) : null}
+                    <FieldDescription className="mt-2">
+                      <Link
+                        href="/dashboard/templates"
+                        className="font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        Create and manage templates
+                      </Link>{" "}
+                      in the dashboard.
+                    </FieldDescription>
+                  </Field>
+                ) : null}
                 <Field>
                   <FieldLabel htmlFor="subject">Subject</FieldLabel>
                   <Input
                     id="subject"
                     value={subject}
-                    onChange={(event) => setSubject(event.target.value)}
+                    onChange={(event) => {
+                      setSelectedSavedTemplateId(null);
+                      setSubject(event.target.value);
+                    }}
                     placeholder="Fall 2026 software opportunities"
                     className="h-10 rounded-xl text-base"
                   />
@@ -357,7 +458,10 @@ export function OutreachForm() {
                   <Textarea
                     id="body"
                     value={bodyText}
-                    onChange={(event) => setBodyText(event.target.value)}
+                    onChange={(event) => {
+                      setSelectedSavedTemplateId(null);
+                      setBodyText(event.target.value);
+                    }}
                     rows={4}
                     placeholder={defaultMessage}
                     className="min-h-32 resize-y rounded-xl text-base leading-6"
@@ -388,6 +492,105 @@ export function OutreachForm() {
                   </Button>
                 ))}
               </div>
+
+              {isSupabaseConfigured() ? (
+                <div className="mt-4 rounded-xl border border-border/80 bg-muted/30 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-muted-foreground">
+                      Save the current subject and message for reuse.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 rounded-lg"
+                      onClick={() => {
+                        setSaveTemplateErr(null);
+                        setSaveTemplateOpen((open) => {
+                          const next = !open;
+                          if (next) {
+                            const fromSubject = subject.trim().slice(0, 80);
+                            setSaveTemplateName(
+                              fromSubject || "My template"
+                            );
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      {saveTemplateOpen ? "Cancel" : "Save as template"}
+                    </Button>
+                  </div>
+                  {saveTemplateOpen ? (
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <Field className="min-w-0 flex-1">
+                        <FieldLabel htmlFor="save-template-name">
+                          Template name
+                        </FieldLabel>
+                        <Input
+                          id="save-template-name"
+                          value={saveTemplateName}
+                          onChange={(e) =>
+                            setSaveTemplateName(e.target.value)
+                          }
+                          placeholder="e.g. Fall follow-up"
+                          className="h-10 rounded-xl"
+                        />
+                      </Field>
+                      <Button
+                        type="button"
+                        className="h-10 shrink-0 rounded-xl sm:w-auto"
+                        disabled={
+                          saveTemplateSaving ||
+                          !subject.trim() ||
+                          !bodyText.trim()
+                        }
+                        onClick={() => void (async () => {
+                          const name = saveTemplateName.trim();
+                          if (!name) {
+                            setSaveTemplateErr("Enter a template name.");
+                            return;
+                          }
+                          setSaveTemplateSaving(true);
+                          setSaveTemplateErr(null);
+                          const { row, error } = await createEmailTemplate({
+                            name,
+                            subject: subject.trim(),
+                            body_text: bodyText,
+                          });
+                          setSaveTemplateSaving(false);
+                          if (error || !row) {
+                            setSaveTemplateErr(
+                              error?.message ?? "Could not save template."
+                            );
+                            return;
+                          }
+                          setSavedTemplates((current) => [row, ...current]);
+                          setSelectedSavedTemplateId(row.id);
+                          setSaveTemplateOpen(false);
+                        })()}
+                      >
+                        {saveTemplateSaving ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Saving…
+                          </>
+                        ) : (
+                          "Save to library"
+                        )}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {saveTemplateErr ? (
+                    <p
+                      className="mt-3 text-xs text-destructive"
+                      role="alert"
+                    >
+                      {saveTemplateErr}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </SetupCard>
 
             <SetupCard number="3" title="Attach resume" label="optional">

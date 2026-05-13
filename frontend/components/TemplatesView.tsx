@@ -1,18 +1,19 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
-  Clock,
   FileText,
-  LayoutGrid,
+  Loader2,
+  Pencil,
   Plus,
   Search,
   SlidersHorizontal,
-  Star,
+  Trash2,
 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -23,85 +24,192 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  createEmailTemplate,
+  deleteEmailTemplate,
+  fetchEmailTemplateRows,
+  updateEmailTemplate,
+  type EmailTemplateRow,
+} from "@/lib/supabase/emailTemplates";
 
-type TemplateCategory = string;
-type TemplateTone = string;
+function formatUpdatedAt(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  if (sameDay) return "Today";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-type OutreachTemplate = {
-  id: string;
-  title: string;
-  description: string;
-  category: TemplateCategory;
-  tone: TemplateTone;
-  favorite: boolean;
-  lastUsedAt: string | null;
-  updatedAt: string;
-};
+function truncateBody(text: string, max = 160) {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (oneLine.length <= max) return oneLine;
+  return `${oneLine.slice(0, max).trim()}…`;
+}
 
-type TemplateTab = "All templates" | "Favorites" | "Recently used";
+type EditorState =
+  | { mode: "create" }
+  | { mode: "edit"; row: EmailTemplateRow };
 
-const emptyTemplates: OutreachTemplate[] = [];
-
-const tabs = [
-  { label: "All templates", icon: LayoutGrid },
-  { label: "Favorites", icon: Star },
-  { label: "Recently used", icon: Clock },
-] satisfies Array<{ label: TemplateTab; icon: typeof LayoutGrid }>;
-
-export function TemplatesView({
-  templates = emptyTemplates,
-}: {
-  templates?: OutreachTemplate[];
-}) {
-  const [activeTab, setActiveTab] = useState<TemplateTab>("All templates");
+export function TemplatesView() {
+  const [rows, setRows] = useState<EmailTemplateRow[]>([]);
+  const [listLoading, setListLoading] = useState(isSupabaseConfigured());
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All categories");
-  const [tone, setTone] = useState("All tones");
   const [sortBy, setSortBy] = useState("Last updated");
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formSubject, setFormSubject] = useState("");
+  const [formBody, setFormBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const categoryOptions = useMemo(
-    () => [
-      "All categories",
-      ...Array.from(new Set(templates.map((template) => template.category))).sort(),
-    ],
-    [templates]
-  );
-  const toneOptions = useMemo(
-    () => [
-      "All tones",
-      ...Array.from(new Set(templates.map((template) => template.tone))).sort(),
-    ],
-    [templates]
-  );
+  const reload = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      setListLoading(false);
+      return;
+    }
+    setListLoading(true);
+    setLoadError(null);
+    const { rows: next, error } = await fetchEmailTemplateRows();
+    if (error) {
+      setLoadError(error.message);
+      setRows([]);
+    } else {
+      setRows(next);
+    }
+    setListLoading(false);
+  }, []);
 
-  const visibleTemplates = useMemo(() => {
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setEditor(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) {
+      setFormName("");
+      setFormSubject("");
+      setFormBody("");
+      return;
+    }
+    if (editor.mode === "create") {
+      setFormName("");
+      setFormSubject("");
+      setFormBody("");
+    } else {
+      setFormName(editor.row.name);
+      setFormSubject(editor.row.subject);
+      setFormBody(editor.row.body_text);
+    }
+  }, [editor]);
+
+  const visibleRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    const nextTemplates = templates.filter((template) => {
-      const matchesTab =
-        activeTab === "All templates" ||
-        (activeTab === "Favorites" && template.favorite) ||
-        (activeTab === "Recently used" && template.lastUsedAt !== null);
-      const matchesQuery =
-        normalizedQuery.length === 0 ||
-        `${template.title} ${template.description} ${template.category} ${template.tone}`
-          .toLowerCase()
-          .includes(normalizedQuery);
-      const matchesCategory =
-        category === "All categories" || template.category === category;
-      const matchesTone = tone === "All tones" || template.tone === tone;
-
-      return matchesTab && matchesQuery && matchesCategory && matchesTone;
+    const filtered = rows.filter((r) => {
+      if (normalizedQuery.length === 0) return true;
+      const blob = `${r.name} ${r.subject} ${r.body_text}`.toLowerCase();
+      return blob.includes(normalizedQuery);
     });
-
-    return nextTemplates.sort((a, b) => {
-      if (sortBy === "Name") return a.title.localeCompare(b.title);
-      if (sortBy === "Category") return a.category.localeCompare(b.category);
-      return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "Name") return a.name.localeCompare(b.name);
+      return Date.parse(b.updated_at) - Date.parse(a.updated_at);
     });
-  }, [activeTab, category, query, sortBy, templates, tone]);
+  }, [query, rows, sortBy]);
 
-  const hasTemplates = templates.length > 0;
+  const openCreate = () => {
+    setActionError(null);
+    setEditor({ mode: "create" });
+  };
+
+  const openEdit = (row: EmailTemplateRow) => {
+    setActionError(null);
+    setEditor({ mode: "edit", row });
+  };
+
+  async function handleSave() {
+    if (!editor) return;
+    const name = formName.trim();
+    const subject = formSubject.trim();
+    const body_text = formBody.trim();
+    if (!name || !subject || !body_text) {
+      setActionError("Name, subject, and message are required.");
+      return;
+    }
+    setSaving(true);
+    setActionError(null);
+    if (editor.mode === "create") {
+      const { row, error } = await createEmailTemplate({
+        name,
+        subject,
+        body_text,
+      });
+      if (error || !row) {
+        setActionError(error?.message ?? "Could not create template.");
+        setSaving(false);
+        return;
+      }
+      setRows((current) => [row, ...current]);
+    } else {
+      const { row, error } = await updateEmailTemplate(editor.row.id, {
+        name,
+        subject,
+        body_text,
+      });
+      if (error || !row) {
+        setActionError(error?.message ?? "Could not update template.");
+        setSaving(false);
+        return;
+      }
+      setRows((current) =>
+        current.map((r) => (r.id === row.id ? row : r))
+      );
+    }
+    setSaving(false);
+    setEditor(null);
+  }
+
+  async function handleDelete(row: EmailTemplateRow) {
+    if (
+      !window.confirm(
+        `Delete template "${row.name}"? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setDeletingId(row.id);
+    const { error } = await deleteEmailTemplate(row.id);
+    setDeletingId(null);
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    setRows((current) => current.filter((r) => r.id !== row.id));
+  }
+
+  const supabaseReady = isSupabaseConfigured();
+  const hasRows = rows.length > 0;
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background pb-10">
@@ -112,44 +220,47 @@ export function TemplatesView({
               Templates
             </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Save, reuse, and customize your outreach templates.
+              Save subject lines and message bodies with merge tokens like{" "}
+              <span className="font-mono text-xs">{"{{first_name}}"}</span>.
+              Use them from the New campaign page.
             </p>
           </div>
-          <Button className="min-h-10 rounded-xl px-4 shadow-lg shadow-primary/15 md:mt-1">
+          <Button
+            type="button"
+            className="min-h-10 rounded-xl px-4 shadow-lg shadow-primary/15 md:mt-1"
+            onClick={openCreate}
+            disabled={!supabaseReady || listLoading}
+          >
             <Plus data-icon="inline-start" aria-hidden="true" />
             New template
           </Button>
         </div>
 
-        <div className="border-b border-border">
-          <div
-            role="tablist"
-            aria-label="Template views"
-            className="flex flex-nowrap gap-5 overflow-x-auto"
-          >
-            {tabs.map((tab) => {
-              const isActive = activeTab === tab.label;
-              return (
-                <button
-                  key={tab.label}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveTab(tab.label)}
-                  className={cn(
-                    "flex min-h-11 shrink-0 items-center gap-2 border-b-2 border-transparent px-2 text-sm font-medium text-muted-foreground transition hover:text-foreground",
-                    isActive && "border-primary text-primary"
-                  )}
-                >
-                  <tab.icon aria-hidden="true" className="size-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {!supabaseReady ? (
+          <Alert>
+            <AlertTitle>Sign in required</AlertTitle>
+            <AlertDescription>
+              Configure Supabase on the frontend and sign in to load and save
+              templates to your account.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
-        <section className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_minmax(16rem,0.66fr)_minmax(16rem,0.66fr)_minmax(16rem,0.66fr)]">
+        {loadError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Could not load templates</AlertTitle>
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {actionError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription>{actionError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <section className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,14rem)]">
           <label className="relative block min-w-0">
             <span className="sr-only">Search templates</span>
             <Search
@@ -159,52 +270,191 @@ export function TemplatesView({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search templates..."
+              placeholder="Search by name, subject, or body…"
               className="h-10 rounded-xl bg-card pl-10 text-sm"
+              disabled={!supabaseReady}
             />
           </label>
-
-          <FilterSelect
-            label="Category"
-            value={category}
-            onChange={setCategory}
-            options={categoryOptions}
-          />
-          <FilterSelect
-            label="Tone"
-            value={tone}
-            onChange={setTone}
-            options={toneOptions}
-          />
           <FilterSelect
             label="Sort by"
             value={sortBy}
             onChange={setSortBy}
-            options={["Last updated", "Name", "Category"]}
+            options={["Last updated", "Name"]}
             icon={<SlidersHorizontal aria-hidden="true" className="size-4" />}
+            disabled={!supabaseReady}
           />
         </section>
 
-        {visibleTemplates.length > 0 ? (
+        {listLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 aria-hidden className="size-4 animate-spin" />
+            Loading templates…
+          </div>
+        ) : visibleRows.length > 0 ? (
           <section
             aria-label="Templates"
             className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
           >
-            {visibleTemplates.map((template) => (
-              <TemplateCard key={template.id} template={template} />
+            {visibleRows.map((row) => (
+              <Card key={row.id} className="rounded-2xl bg-card shadow-sm">
+                <CardContent className="flex min-h-48 flex-col gap-3 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-semibold leading-snug text-foreground">
+                        {row.name}
+                      </h2>
+                      <p className="mt-1 text-sm font-medium text-muted-foreground line-clamp-2">
+                        {row.subject}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="rounded-lg"
+                        aria-label={`Edit ${row.name}`}
+                        onClick={() => openEdit(row)}
+                      >
+                        <Pencil aria-hidden className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="rounded-lg text-destructive hover:text-destructive"
+                        aria-label={`Delete ${row.name}`}
+                        disabled={deletingId === row.id}
+                        onClick={() => void handleDelete(row)}
+                      >
+                        {deletingId === row.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Trash2 aria-hidden className="size-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {truncateBody(row.body_text)}
+                  </p>
+                  <p className="mt-auto text-xs text-muted-foreground">
+                    Updated {formatUpdatedAt(row.updated_at)}
+                  </p>
+                </CardContent>
+              </Card>
             ))}
           </section>
         ) : (
           <Card className="rounded-2xl bg-card shadow-sm">
             <CardContent className="p-5">
-              <TemplatesEmptyState
-                activeTab={activeTab}
-                hasTemplates={hasTemplates}
-              />
+              <Empty className="min-h-56 border border-dashed border-border bg-muted/40 sm:min-h-[18rem]">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileText aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyTitle>
+                    {hasRows ? "No matching templates" : "No templates yet"}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {hasRows
+                      ? "Try a different search."
+                      : "Create a template to reuse outreach copy in campaigns."}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             </CardContent>
           </Card>
         )}
       </div>
+
+      {editor ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 border-0 bg-black/50"
+            aria-label="Close editor"
+            onClick={() => setEditor(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-editor-title"
+            className="relative z-10 flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+          >
+            <div className="border-b border-border px-5 py-4">
+              <h2
+                id="template-editor-title"
+                className="text-lg font-semibold text-foreground"
+              >
+                {editor.mode === "create"
+                  ? "New template"
+                  : "Edit template"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Stored in your account; you can apply this from New campaign.
+              </p>
+            </div>
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">Name</span>
+                <Input
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="e.g. Fall recruiting — short"
+                  className="rounded-xl"
+                  autoFocus
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">Subject</span>
+                <Input
+                  value={formSubject}
+                  onChange={(e) => setFormSubject(e.target.value)}
+                  placeholder="Email subject line"
+                  className="rounded-xl"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium">Message</span>
+                <Textarea
+                  value={formBody}
+                  onChange={(e) => setFormBody(e.target.value)}
+                  rows={10}
+                  placeholder="Hi {{first_name}}, ..."
+                  className="min-h-[200px] resize-y rounded-xl text-sm leading-6"
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={saving}
+                onClick={() => setEditor(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl"
+                disabled={saving}
+                onClick={() => void handleSave()}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Saving…
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -215,22 +465,25 @@ function FilterSelect({
   onChange,
   options,
   icon,
+  disabled,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: string[];
   icon?: ReactNode;
+  disabled?: boolean;
 }) {
   return (
-    <label className="relative block">
+    <label className={cn("relative block", disabled && "opacity-60")}>
       <span className="absolute left-3 top-1 text-[0.7rem] font-medium leading-none text-muted-foreground">
         {label}
       </span>
       <select
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 pb-1.5 pt-4 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 pb-1.5 pt-4 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -242,57 +495,5 @@ function FilterSelect({
         {icon ?? <ChevronDown aria-hidden="true" className="size-4" />}
       </span>
     </label>
-  );
-}
-
-function TemplatesEmptyState({
-  activeTab,
-  hasTemplates,
-}: {
-  activeTab: TemplateTab;
-  hasTemplates: boolean;
-}) {
-  const title = hasTemplates ? "No matching templates" : "No templates yet";
-  const description = hasTemplates
-    ? "Adjust your search or filters to see more templates."
-    : activeTab === "Favorites"
-      ? "Favorite templates will appear here once you create and save them."
-      : activeTab === "Recently used"
-        ? "Templates you use in campaigns will appear here."
-        : "Create your first template when you are ready to reuse outreach copy.";
-
-  return (
-    <Empty className="min-h-56 border border-dashed border-border bg-muted/40 sm:min-h-[24rem]">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <FileText aria-hidden="true" />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  );
-}
-
-function TemplateCard({ template }: { template: OutreachTemplate }) {
-  return (
-    <Card className="rounded-2xl bg-card shadow-sm">
-      <CardContent className="flex min-h-56 flex-col gap-4 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-muted-foreground">
-              {template.category}
-            </p>
-            <h2 className="mt-3 text-lg font-semibold leading-snug text-foreground">
-              {template.title}
-            </h2>
-          </div>
-          <Star aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-        </div>
-        <p className="text-sm leading-6 text-muted-foreground">
-          {template.description}
-        </p>
-      </CardContent>
-    </Card>
   );
 }
