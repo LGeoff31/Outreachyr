@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -49,6 +49,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { fetchCompanyKeys } from "@/lib/api";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  fetchUserResumeRows,
+  resumeApiAuthHeaders,
+  type UserResumeRow,
+} from "@/lib/supabase/userResumes";
 
 type Recipient = {
   email?: string;
@@ -82,6 +88,15 @@ export function OutreachForm() {
   const [subject, setSubject] = useState(defaultSubject);
   const [bodyText, setBodyText] = useState(defaultMessage);
   const [file, setFile] = useState<File | null>(null);
+  const [savedResumes, setSavedResumes] = useState<UserResumeRow[]>([]);
+  const [savedResumesLoading, setSavedResumesLoading] = useState(false);
+  const [savedResumesError, setSavedResumesError] = useState<string | null>(
+    null
+  );
+  const [selectedSavedResumeId, setSelectedSavedResumeId] = useState<
+    string | null
+  >(null);
+  const [libraryAttachLoading, setLibraryAttachLoading] = useState(false);
   const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [reviewed, setReviewed] = useState(false);
@@ -96,6 +111,60 @@ export function OutreachForm() {
       .then(setHints)
       .catch(() => {});
   }, []);
+
+  const applyLibraryResume = useCallback(async (row: UserResumeRow) => {
+    setLibraryAttachLoading(true);
+    setSavedResumesError(null);
+    try {
+      const res = await fetch(
+        `/api/user-resumes/${encodeURIComponent(row.id)}/file`,
+        { headers: await resumeApiAuthHeaders() }
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      const blob = await res.blob();
+      const safeName = `${row.display_name.replace(/[/\\]/g, "-")}.pdf`;
+      const nextFile = new File([blob], safeName, { type: "application/pdf" });
+      setFile(nextFile);
+      setSelectedSavedResumeId(row.id);
+    } catch (e) {
+      setFile(null);
+      setSelectedSavedResumeId(null);
+      setSavedResumesError(
+        e instanceof Error ? e.message : "Could not load saved resume."
+      );
+    } finally {
+      setLibraryAttachLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    let cancelled = false;
+    (async () => {
+      setSavedResumesLoading(true);
+      setSavedResumesError(null);
+      try {
+        const { rows, error } = await fetchUserResumeRows();
+        if (cancelled) return;
+        if (error) {
+          setSavedResumes([]);
+          setSavedResumesError(error.message);
+          return;
+        }
+        setSavedResumes(rows);
+        const defaultRow = rows.find((r) => r.is_default);
+        if (defaultRow) await applyLibraryResume(defaultRow);
+      } finally {
+        if (!cancelled) setSavedResumesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyLibraryResume]);
 
   const companyReady =
     testMode || company.trim().length > 0;
@@ -322,11 +391,76 @@ export function OutreachForm() {
             </SetupCard>
 
             <SetupCard number="3" title="Attach resume" label="optional">
+              {isSupabaseConfigured() ? (
+                <Field className="mb-4">
+                  <FieldLabel htmlFor="saved-resume">
+                    Use a saved resume
+                  </FieldLabel>
+                  <select
+                    id="saved-resume"
+                    disabled={
+                      savedResumesLoading ||
+                      libraryAttachLoading ||
+                      savedResumes.length === 0
+                    }
+                    value={selectedSavedResumeId ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!value) {
+                        setFile(null);
+                        setSelectedSavedResumeId(null);
+                        setSavedResumesError(null);
+                        return;
+                      }
+                      const row = savedResumes.find((r) => r.id === value);
+                      if (row) void applyLibraryResume(row);
+                    }}
+                    className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <option value="">
+                      {savedResumesLoading
+                        ? "Loading saved resumes…"
+                        : savedResumes.length === 0
+                          ? "No saved resumes yet"
+                          : "Choose from library…"}
+                    </option>
+                    {savedResumes.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.display_name}
+                        {r.is_default ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {savedResumesError ? (
+                    <p className="mt-2 text-xs text-destructive" role="alert">
+                      {savedResumesError}
+                    </p>
+                  ) : null}
+                  <FieldDescription className="mt-2">
+                    <Link
+                      href="/dashboard/resumes"
+                      className="font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Upload and manage resumes
+                    </Link>{" "}
+                    in the library.
+                  </FieldDescription>
+                </Field>
+              ) : null}
+
               <Field>
                 <FieldLabel htmlFor="resume" className="sr-only">
                   Resume attachment
                 </FieldLabel>
-                {file ? (
+                {libraryAttachLoading ? (
+                  <div className="flex min-h-16 items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-5 py-4 text-sm text-muted-foreground">
+                    <Loader2
+                      className="size-5 shrink-0 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Attaching resume from library…
+                  </div>
+                ) : file ? (
                   <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-4">
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
                       <FileText aria-hidden="true" className="size-5" />
@@ -337,6 +471,9 @@ export function OutreachForm() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {Math.max(1, Math.round(file.size / 1024))} KB
+                        {selectedSavedResumeId ? (
+                          <span className="text-primary"> · From library</span>
+                        ) : null}
                       </p>
                     </div>
                     <Button
@@ -344,7 +481,10 @@ export function OutreachForm() {
                       variant="ghost"
                       size="icon"
                       aria-label="Remove resume"
-                      onClick={() => setFile(null)}
+                      onClick={() => {
+                        setFile(null);
+                        setSelectedSavedResumeId(null);
+                      }}
                     >
                       <X aria-hidden="true" />
                     </Button>
@@ -359,9 +499,10 @@ export function OutreachForm() {
                       type="file"
                       accept="application/pdf,.pdf"
                       className="sr-only"
-                      onChange={(event) =>
-                        setFile(event.target.files?.[0] ?? null)
-                      }
+                      onChange={(event) => {
+                        setSelectedSavedResumeId(null);
+                        setFile(event.target.files?.[0] ?? null);
+                      }}
                     />
                     <Upload
                       aria-hidden="true"

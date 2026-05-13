@@ -5,12 +5,12 @@ from collections.abc import Generator
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from config import load_dotenv, required_env
+from config import load_dotenv, normalize_postgres_url_for_psycopg, required_env
 
 
 def database_url() -> str:
     load_dotenv()
-    return required_env("DATABASE_URL")
+    return normalize_postgres_url_for_psycopg(required_env("DATABASE_URL"))
 
 
 def make_engine(url: str | None = None) -> Engine:

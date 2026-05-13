@@ -33,6 +33,17 @@ def required_env(name: str) -> str:
     return value
 
 
+def normalize_postgres_url_for_psycopg(url: str) -> str:
+    """SQLAlchemy defaults plain postgresql:// to psycopg2; this app uses psycopg3."""
+    url = url.strip()
+    if "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    if scheme in ("postgresql", "postgres") and "+psycopg" not in scheme:
+        return f"postgresql+psycopg://{rest}"
+    return url
+
+
 def serpapi_api_key() -> str:
     return required_env("SERPAPI_API_KEY")
 

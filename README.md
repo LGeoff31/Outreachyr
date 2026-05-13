@@ -11,7 +11,7 @@ This repo is split into separately deployable app roots:
 2. Go to the backend app: `cd backend`
 3. Install dependencies: `uv sync`
 4. Create a `.env` file with `SERPAPI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY`.
-5. Run migrations from `backend/`: `uv run alembic upgrade head`
+5. Run migrations from `backend/`: `uv run alembic upgrade head` (this creates app tables, the `user_resumes` library table, a private `resumes` storage bucket, and RLS policies).
 6. Optionally modify `send.py` by adding specific recruiter emails to `TO` or changing the subject line
 7. Add your email body in the `body` file
 8. Start the API: `uv run python app.py`

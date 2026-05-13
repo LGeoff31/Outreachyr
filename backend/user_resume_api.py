@@ -1,0 +1,347 @@
+"""User resume library via Postgres + Supabase Storage REST (bypasses PostgREST)."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Annotated, Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
+
+from config import supabase_publishable_key, supabase_url
+from database import make_session_factory
+from models import UserResume
+from supabase_jwt import verify_supabase_access_token
+
+router = APIRouter(prefix="/api", tags=["user-resumes"])
+
+_sm = None
+
+
+def _session_factory():
+    global _sm
+    if _sm is None:
+        _sm = make_session_factory()
+    return _sm
+
+
+def get_db_session():
+    try:
+        session = _session_factory()()
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database not configured: {e}",
+        ) from e
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def require_supabase_user(request: Request) -> dict:
+    auth = request.headers.get("authorization") or request.headers.get(
+        "Authorization", ""
+    )
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth.removeprefix("Bearer ").strip()
+    try:
+        user = verify_supabase_access_token(token)
+    except RuntimeError as e:
+        raise HTTPException(status_code=401, detail=str(e)) from e
+    request.state.supabase_access_token = token
+    return user
+
+
+def _storage_headers(access_token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "apikey": supabase_publishable_key(),
+    }
+
+
+def _encode_object_path(object_path: str) -> str:
+    return "/".join(quote(part, safe="") for part in object_path.split("/") if part)
+
+
+def storage_upload_object(access_token: str, object_path: str, data: bytes) -> None:
+    base = supabase_url().rstrip("/")
+    enc = _encode_object_path(object_path)
+    url = f"{base}/storage/v1/object/resumes/{enc}"
+    req = UrlRequest(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            **_storage_headers(access_token),
+            "Content-Type": "application/pdf",
+        },
+    )
+    try:
+        with urlopen(req, timeout=120) as r:
+            if r.status not in (200, 201):
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Storage upload failed: HTTP {r.status}",
+                )
+    except HTTPError as e:
+        err_body = e.read().decode(errors="replace") if e.fp else ""
+        raise HTTPException(
+            status_code=502,
+            detail=f"Storage upload rejected: HTTP {e.code} {err_body}",
+        ) from e
+    except (OSError, URLError) as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Storage upload failed: {e}",
+        ) from e
+
+
+def storage_remove_object(access_token: str, object_path: str) -> None:
+    base = supabase_url().rstrip("/")
+    enc = _encode_object_path(object_path)
+    url = f"{base}/storage/v1/object/resumes/{enc}"
+    req = UrlRequest(url, method="DELETE", headers=_storage_headers(access_token))
+    try:
+        with urlopen(req, timeout=60) as r:
+            r.read()
+    except (HTTPError, OSError, URLError):
+        pass
+
+
+def storage_download_object(access_token: str, object_path: str) -> bytes:
+    """Private bucket objects: try ``authenticated`` URL first, then standard object URL."""
+    base = supabase_url().rstrip("/")
+    enc = _encode_object_path(object_path)
+    urls = (
+        f"{base}/storage/v1/object/authenticated/resumes/{enc}",
+        f"{base}/storage/v1/object/resumes/{enc}",
+    )
+    last: HTTPError | None = None
+    for url in urls:
+        req = UrlRequest(url, headers=_storage_headers(access_token), method="GET")
+        try:
+            with urlopen(req, timeout=120) as r:
+                return r.read()
+        except HTTPError as e:
+            last = e
+            if e.code != 400 and e.code != 404:
+                err_body = e.read().decode(errors="replace") if e.fp else ""
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Storage download failed: HTTP {e.code} {err_body}",
+                ) from e
+            continue
+        except (OSError, URLError) as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Storage download failed: {e}",
+            ) from e
+    err_body = last.read().decode(errors="replace") if last and last.fp else ""
+    code = last.code if last else "?"
+    raise HTTPException(
+        status_code=502,
+        detail=f"Storage download failed: HTTP {code} {err_body}",
+    )
+
+
+def storage_create_signed_url(access_token: str, object_path: str) -> str:
+    base = supabase_url().rstrip("/")
+    enc = _encode_object_path(object_path)
+    url = f"{base}/storage/v1/object/sign/resumes/{enc}"
+    payload = json.dumps({"expiresIn": 3600}).encode()
+    req = UrlRequest(
+        url,
+        data=payload,
+        method="POST",
+        headers={
+            **_storage_headers(access_token),
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urlopen(req, timeout=30) as r:
+            raw = json.loads(r.read().decode())
+    except HTTPError as e:
+        err_body = e.read().decode(errors="replace") if e.fp else ""
+        raise HTTPException(
+            status_code=502,
+            detail=f"Signed URL failed: HTTP {e.code} {err_body}",
+        ) from e
+    except (OSError, URLError, json.JSONDecodeError) as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Signed URL failed: {e}",
+        ) from e
+
+    signed = raw.get("signedURL") or raw.get("signedUrl")
+    if not signed:
+        raise HTTPException(
+            status_code=502,
+            detail="Storage did not return a signed URL",
+        )
+    if str(signed).startswith("/"):
+        return f"{base}/storage/v1{signed}"
+    return str(signed)
+
+
+def _row_json(r: UserResume) -> dict[str, Any]:
+    return {
+        "id": str(r.id),
+        "owner_id": str(r.owner_id),
+        "resume_storage_path": r.resume_storage_path,
+        "display_name": r.display_name,
+        "file_type": r.file_type,
+        "byte_size": r.byte_size,
+        "focus": r.focus,
+        "used_in_campaigns": r.used_in_campaigns,
+        "is_default": r.is_default,
+        "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+
+@router.get("/user-resumes")
+def list_user_resumes(
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    rows = (
+        session.execute(
+            select(UserResume)
+            .where(UserResume.owner_id == uid)
+            .order_by(UserResume.updated_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return {"rows": [_row_json(r) for r in rows]}
+
+
+@router.post("/user-resumes")
+async def upload_user_resume(
+    request: Request,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+    file: UploadFile = File(...),
+):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="PDF file required")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
+
+    uid = user["id"]
+    rid = str(uuid.uuid4())
+    object_path = f"{uid}/{rid}.pdf"
+    access_token = request.state.supabase_access_token
+
+    storage_upload_object(access_token, object_path, data)
+
+    display_name = (
+        file.filename.rsplit(".", 1)[0] if "." in file.filename else file.filename
+    )
+    row = UserResume(
+        id=uuid.UUID(rid),
+        owner_id=uuid.UUID(uid),
+        resume_storage_path=object_path,
+        display_name=display_name,
+        file_type="PDF",
+        byte_size=len(data),
+        focus="Unassigned",
+        used_in_campaigns=0,
+        is_default=False,
+        status="Ready",
+    )
+    session.add(row)
+    try:
+        session.commit()
+        session.refresh(row)
+    except Exception:
+        session.rollback()
+        storage_remove_object(access_token, object_path)
+        raise
+
+    return {"row": _row_json(row)}
+
+
+class SetDefaultBody(BaseModel):
+    resume_id: str = Field(..., min_length=1)
+
+
+@router.post("/user-resumes/set-default")
+def set_default_resume(
+    body: SetDefaultBody,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    rid = uuid.UUID(body.resume_id)
+    found = session.execute(
+        select(UserResume).where(UserResume.id == rid, UserResume.owner_id == uid)
+    ).scalar_one_or_none()
+    if found is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    session.execute(
+        update(UserResume).where(UserResume.owner_id == uid).values(is_default=False)
+    )
+    found.is_default = True
+    session.commit()
+    return {"ok": True}
+
+
+class SignedUrlBody(BaseModel):
+    storage_path: str = Field(..., min_length=1)
+
+
+@router.post("/user-resumes/signed-url")
+def post_signed_url(
+    body: SignedUrlBody,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    request: Request,
+):
+    uid = user["id"]
+    path = body.storage_path.strip()
+    if not path.startswith(f"{uid}/"):
+        raise HTTPException(status_code=403, detail="Invalid storage path")
+    access_token = request.state.supabase_access_token
+    signed = storage_create_signed_url(access_token, path)
+    return {"signed_url": signed}
+
+
+@router.get("/user-resumes/{resume_id}/file")
+def get_resume_pdf_file(
+    resume_id: uuid.UUID,
+    request: Request,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    row = session.execute(
+        select(UserResume).where(UserResume.id == resume_id, UserResume.owner_id == uid)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    token = request.state.supabase_access_token
+    data = storage_download_object(token, row.resume_storage_path)
+    safe_name = (row.display_name or "resume").replace('"', "")
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_name}.pdf"',
+            "Cache-Control": "private, max-age=0, no-store",
+        },
+    )

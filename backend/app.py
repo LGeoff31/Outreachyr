@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
 import secrets
 from contextlib import asynccontextmanager
-from urllib.error import HTTPError, URLError
-from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import Cookie, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +24,8 @@ from config import (
 )
 from gmail_send_oauth import send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
+from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
+from user_resume_api import router as user_resume_router
 from utils import domain_for_company
 
 _app_init_done = False
@@ -46,6 +45,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Outreach API", version="0.1.0", lifespan=lifespan)
+
+app.include_router(user_resume_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -227,29 +228,6 @@ class SendJsonRequest(BaseModel):
 class GoogleSessionRequest(BaseModel):
     access_token: str = Field(..., min_length=1)
     provider_refresh_token: str = Field(..., min_length=1)
-
-
-def _verify_supabase_user(access_token: str) -> dict:
-    req = UrlRequest(
-        f"{supabase_url().rstrip('/')}/auth/v1/user",
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "apikey": supabase_publishable_key(),
-        },
-    )
-    try:
-        with urlopen(req, timeout=30) as r:
-            data = json.loads(r.read().decode())
-    except HTTPError as e:
-        raise RuntimeError(f"Supabase Auth rejected the session: HTTP {e.code}") from e
-    except (OSError, URLError) as e:
-        raise RuntimeError(f"Could not reach Supabase Auth: {e}") from e
-
-    email = (data.get("email") or "").strip()
-    user_id = (data.get("id") or "").strip()
-    if not email or not user_id:
-        raise RuntimeError("Supabase Auth did not return a usable user.")
-    return {"email": email, "id": user_id}
 
 
 @app.get("/")
