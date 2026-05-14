@@ -2,15 +2,23 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Suspense, type SVGProps, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { GOOGLE_OAUTH_SCOPES } from "@/lib/auth";
 import {
   createClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 function GoogleLogo(props: SVGProps<SVGSVGElement>) {
   return (
@@ -120,11 +128,14 @@ function LoginInner() {
 
   return (
     <section className="flex min-h-[calc(100svh-4rem)] items-center justify-center bg-background px-4 py-10">
-      <Card className="w-full max-w-md rounded-2xl shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold tracking-tight">
-            Sign in
+      <Card className="w-full max-w-md rounded-2xl border-border/80 shadow-sm shadow-black/[0.03] dark:shadow-black/20">
+        <CardHeader className="space-y-1 pb-2">
+          <CardTitle className="text-2xl font-semibold tracking-tight text-foreground">
+            Welcome back
           </CardTitle>
+          <CardDescription className="text-base text-muted-foreground">
+            Sign in with Google to connect Gmail and open your dashboard.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {errorMessage ? (
@@ -151,18 +162,37 @@ function LoginInner() {
             type="button"
             variant="outline"
             size="lg"
-            className="min-h-12 w-full rounded-xl text-base font-semibold shadow-sm"
+            className={cn(
+              "h-12 w-full gap-3 rounded-xl border-border/90 bg-card px-5 text-[0.9375rem] font-medium",
+              "transition-all hover:border-border hover:bg-muted/40 hover:shadow-sm",
+              "disabled:opacity-60"
+            )}
             disabled={!supabaseConfigured || checkingSession || startingLogin}
             onClick={() => void signInWithGoogle()}
           >
             {checkingSession ? (
-              "Checking session..."
+              <>
+                <Loader2
+                  aria-hidden
+                  className="size-5 shrink-0 animate-spin text-muted-foreground"
+                />
+                Checking session…
+              </>
             ) : startingLogin ? (
-              "Opening Google..."
+              <>
+                <Loader2
+                  aria-hidden
+                  className="size-5 shrink-0 animate-spin text-muted-foreground"
+                />
+                Redirecting to Google…
+              </>
             ) : (
               <>
-                <GoogleLogo className="size-5" />
-                Sign in with Google
+                <GoogleLogo
+                  data-icon="inline-start"
+                  className="size-5 shrink-0"
+                />
+                Continue with Google
               </>
             )}
           </Button>

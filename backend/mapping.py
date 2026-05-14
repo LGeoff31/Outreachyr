@@ -8,4 +8,5 @@ COMPANY_EMAIL_HOST = {
     "amazon": "amazon.jobs",
     "shopify": "shopify.com",
     "capital one": "capitalone.com",
+    "notion": "notion.com",
 }

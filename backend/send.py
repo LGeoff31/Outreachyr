@@ -12,6 +12,23 @@ PLACEHOLDER = "__FIRST_NAME__"
 TO = []  # (optional) insert specific recruiter emails here
 
 
+def apply_merge_fields(
+    text: str,
+    *,
+    greeting_name: str,
+    company: str | None,
+) -> str:
+    """Match dashboard placeholders: {{first_name}}, {{company}}, {{role}}, legacy __FIRST_NAME__."""
+    name = (greeting_name or "").strip() or "there"
+    company_display = (company or "").strip() or "the company"
+    out = text
+    out = out.replace("{{first_name}}", name)
+    out = out.replace(PLACEHOLDER, name)
+    out = out.replace("{{company}}", company_display)
+    out = out.replace("{{role}}", "recruiting")
+    return out
+
+
 def _ingest_search_items(items: list[dict], domain: str) -> list[tuple[str, str]]:
     out, seen = [], set()
     for it in items:
@@ -88,7 +105,7 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]
 
 def test_recipients() -> list[tuple[str, str]]:
     """Fixed address for end-to-end send checks (no SerpAPI, no domain mapping)."""
-    return [("cyz1@test.com", "Casey")]
+    return [("geoffrey.lee@test.com", "Casey")]
 
 
 def discover(company: str) -> list[tuple[str, str]]:
@@ -131,7 +148,7 @@ def build_outreach_messages(
         body_text = (root / "body").read_text(encoding="utf-8")
 
     if subject and subject.strip():
-        final_subject = subject.strip()
+        subject_template = subject.strip()
     else:
         c = (company or "").strip()
         if c:
@@ -139,16 +156,22 @@ def build_outreach_messages(
                 c[0].upper() + c[1:].lower()
                 if len(c) > 1 else c.upper()
             )
-            final_subject = f"{name} Fall 2026 Co-op"
+            subject_template = f"{name} Fall 2026 Co-op"
         else:
-            final_subject = "Outreach"
+            subject_template = "Outreach"
 
     messages: list[EmailMessage] = []
     for email, hi in people:
         msg = EmailMessage()
-        msg["Subject"] = final_subject
+        merged_subject = apply_merge_fields(
+            subject_template, greeting_name=hi, company=company
+        )
+        merged_body = apply_merge_fields(
+            body_text, greeting_name=hi, company=company
+        )
+        msg["Subject"] = merged_subject
         msg["From"], msg["To"] = sender_email, email
-        msg.set_content(body_text.replace(PLACEHOLDER, hi))
+        msg.set_content(merged_body)
 
         if resume_bytes is not None:
             fn = resume_filename or "attachment.pdf"

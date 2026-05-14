@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { LogOut } from "lucide-react";
+import { LogIn, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -137,10 +137,12 @@ export function HeaderAuth() {
     <Link
       href="/login"
       className={cn(
-        buttonVariants({ variant: "default", size: "sm" }),
-        "min-h-10 rounded-xl px-4 shadow-sm shadow-primary/20"
+        buttonVariants({ variant: "outline", size: "sm" }),
+        "min-h-10 gap-2 rounded-xl border-border/80 px-4 font-medium transition-colors",
+        "hover:border-border hover:bg-muted/50 hover:shadow-sm"
       )}
     >
+      <LogIn aria-hidden className="size-3.5 text-muted-foreground" />
       Sign in
     </Link>
   );
