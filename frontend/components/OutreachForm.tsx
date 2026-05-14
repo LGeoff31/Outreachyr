@@ -271,7 +271,7 @@ export function OutreachForm() {
             nextRecipients.length === 0
               ? "Dry run finished, but no recipients were returned."
               : testMode
-                ? `Test mode: loaded ${data.count ?? nextRecipients.length} fake address(es) (cyz1@test.com, …). Review, then send to confirm Gmail delivery.`
+                ? `Test mode: loaded ${data.count ?? nextRecipients.length} test address (cyz1@test.com). Review, then send to confirm Gmail delivery.`
                 : `Dry run found ${
                     data.count ?? nextRecipients.length
                   } recipient(s). Review each message before sending.`
@@ -281,7 +281,7 @@ export function OutreachForm() {
           setReviewed(false);
           setMessage(
             testMode
-              ? `Sent to ${data.sent ?? 0} test address(es). Confirm delivery in Gmail or at the cyz* inboxes.`
+              ? `Sent to ${data.sent ?? 0} test address. Confirm delivery in Gmail or at cyz1@test.com if you control that inbox.`
               : `Sent to ${data.sent ?? 0} recipient(s).`
           );
         }
@@ -371,7 +371,7 @@ export function OutreachForm() {
                     <FieldDescription className="text-xs leading-5">
                       Skip search and preview{" "}
                       <span className="font-medium text-foreground">
-                        cyz1@test.com … cyz4@test.com
+                        cyz1@test.com
                       </span>{" "}
                       so you can send real messages through Gmail and confirm the
                       pipeline. Use addresses you control or expect bounces.
