@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Clock,
   FileText,
+  Loader2,
   MoreHorizontal,
   Search,
   Send,
@@ -27,6 +28,11 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  fetchCampaignRows,
+  type CampaignApiRow,
+} from "@/lib/supabase/campaigns";
 
 type CampaignStatus = "Review ready" | "Sent" | "Draft" | "Paused";
 
@@ -43,6 +49,56 @@ type Campaign = {
   initial: string;
   accent: "blue" | "green" | "amber" | "violet" | "cyan";
 };
+
+const ACCENT_ROTATION = ["blue", "green", "amber", "violet", "cyan"] as const;
+
+function accentFromId(id: string): Campaign["accent"] {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return ACCENT_ROTATION[Math.abs(h) % ACCENT_ROTATION.length] as Campaign["accent"];
+}
+
+function formatCampaignUpdatedLabel(iso: string): string {
+  const d = new Date(iso);
+  const datePart = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const timePart = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${datePart} ${timePart}`;
+}
+
+function mapApiCampaign(row: CampaignApiRow): Campaign {
+  const title =
+    row.subject?.trim() ||
+    (row.company?.trim() ? `${row.company} outreach` : "Campaign");
+  const description = (row.body_preview ?? "").trim();
+  const ts =
+    row.updated_at || row.sent_at || row.created_at || new Date().toISOString();
+  const raw = (row.status || "draft").toLowerCase();
+  let status: CampaignStatus = "Draft";
+  if (raw === "sent") status = "Sent";
+  else if (raw === "paused") status = "Paused";
+  else if (raw === "review" || raw === "review_ready") status = "Review ready";
+
+  return {
+    id: row.id,
+    title,
+    description: description || "—",
+    company: row.company,
+    status,
+    recipients: row.recipient_count,
+    resumeAttached: row.resume_attached,
+    updatedAt: ts,
+    updatedAtLabel: formatCampaignUpdatedLabel(ts),
+    initial: (title.slice(0, 1) || "?").toUpperCase(),
+    accent: accentFromId(row.id),
+  };
+}
 
 const summaryCardConfig = [
   {
@@ -72,13 +128,37 @@ const summaryCardConfig = [
 ] as const;
 
 const pageSize = 6;
-const emptyCampaigns: Campaign[] = [];
 
-export function CampaignsView({
-  campaigns = emptyCampaigns,
-}: {
-  campaigns?: Campaign[];
-}) {
+export function CampaignsView() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setCampaigns([]);
+      setListLoading(false);
+      setListError(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setListLoading(true);
+      setListError(null);
+      const { rows, error } = await fetchCampaignRows();
+      if (cancelled) return;
+      if (error) {
+        setCampaigns([]);
+        setListError(error.message);
+      } else {
+        setCampaigns(rows.map(mapApiCampaign));
+      }
+      setListLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [company, setCompany] = useState("All companies");
@@ -157,6 +237,14 @@ export function CampaignsView({
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Manage your outreach campaigns and track their progress.
             </p>
+            {listError ? (
+              <p
+                className="mt-3 text-sm text-destructive"
+                role="alert"
+              >
+                {listError}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -240,7 +328,20 @@ export function CampaignsView({
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleCampaigns.length > 0 ? (
+                  {listLoading ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-14 text-center text-sm text-muted-foreground sm:px-5"
+                      >
+                        <Loader2
+                          aria-hidden="true"
+                          className="mx-auto size-6 animate-spin"
+                        />
+                        <span className="mt-2 block">Loading campaigns…</span>
+                      </td>
+                    </tr>
+                  ) : visibleCampaigns.length > 0 ? (
                     visibleCampaigns.map((campaign) => (
                       <CampaignRow key={campaign.id} campaign={campaign} />
                     ))
@@ -450,7 +551,11 @@ function CampaignRow({ campaign }: { campaign: Campaign }) {
         <StatusBadge status={campaign.status} />
       </td>
       <td className="px-4 py-3 text-muted-foreground">
-        {campaign.recipients === null ? "-" : `${campaign.recipients} found`}
+        {campaign.recipients === null
+          ? "—"
+          : campaign.status === "Sent"
+            ? `${campaign.recipients} sent`
+            : `${campaign.recipients} found`}
       </td>
       <td className="px-4 py-3">
         {campaign.resumeAttached ? (

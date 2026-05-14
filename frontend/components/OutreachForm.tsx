@@ -242,12 +242,28 @@ export function OutreachForm() {
       fd.append("subject", subject);
       fd.append("body_text", bodyText);
       if (file) fd.append("resume", file, file.name);
+      const libraryRow = selectedSavedResumeId
+        ? savedResumes.find((r) => r.id === selectedSavedResumeId)
+        : undefined;
+      if (libraryRow?.resume_storage_path) {
+        fd.append("resume_storage_path", libraryRow.resume_storage_path);
+      }
+
+      let sendHeaders: Record<string, string> = {};
+      if (isSupabaseConfigured()) {
+        try {
+          sendHeaders = await resumeApiAuthHeaders();
+        } catch {
+          /* Gmail send still works with session cookie; DB row needs owner id from cookie or future sign-in */
+        }
+      }
 
       try {
         const res = await fetch("/api/send", {
           method: "POST",
           body: fd,
           credentials: "include",
+          headers: sendHeaders,
         });
         const data = (await res.json()) as SendResponse;
 
@@ -294,7 +310,17 @@ export function OutreachForm() {
         setLoading(null);
       }
     },
-    [bodyText, company, companyReady, file, reviewed, subject, testMode]
+    [
+      bodyText,
+      company,
+      companyReady,
+      file,
+      reviewed,
+      savedResumes,
+      selectedSavedResumeId,
+      subject,
+      testMode,
+    ]
   );
 
   return (

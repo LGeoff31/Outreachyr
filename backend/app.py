@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Cookie, FastAPI, File, Form, Request, UploadFile
@@ -25,6 +26,7 @@ from config import (
 from gmail_send_oauth import send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
 from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
+from campaign_api import persist_sent_campaign, router as campaign_router
 from email_template_api import router as email_template_router
 from user_resume_api import router as user_resume_router
 from utils import domain_for_company
@@ -49,6 +51,7 @@ app = FastAPI(title="Outreach API", version="0.1.0", lifespan=lifespan)
 
 app.include_router(user_resume_router)
 app.include_router(email_template_router)
+app.include_router(campaign_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +66,26 @@ def _parse_bool(v: str) -> bool:
     return str(v).lower() in ("true", "1", "on", "yes")
 
 
+def _owner_id_for_send(request: Request, row: dict | None) -> uuid.UUID | None:
+    if row:
+        raw = row.get("supabase_user_id")
+        if raw:
+            try:
+                return uuid.UUID(str(raw))
+            except ValueError:
+                pass
+    auth = request.headers.get("authorization") or request.headers.get(
+        "Authorization", ""
+    )
+    if auth.startswith("Bearer "):
+        try:
+            user = _verify_supabase_user(auth.removeprefix("Bearer ").strip())
+            return uuid.UUID(str(user["id"]))
+        except (RuntimeError, ValueError):
+            pass
+    return None
+
+
 def _send_campaign(
     request: Request,
     *,
@@ -73,6 +96,7 @@ def _send_campaign(
     body_opt: str | None,
     resume_bytes: bytes | None,
     resume_filename: str,
+    resume_storage_path: str | None = None,
 ):
     recipients = [{"email": e, "greeting_name": n} for e, n in people]
 
@@ -136,6 +160,19 @@ def _send_campaign(
                 status_code=500,
                 content={"ok": False, "error": f"Send failed: {e}"},
             )
+        owner_id = _owner_id_for_send(request, row)
+        subj_final = subject if subject is not None else ""
+        body_final = body_opt if body_opt is not None else ""
+        path_clean = (resume_storage_path or "").strip() or None
+        if owner_id:
+            persist_sent_campaign(
+                owner_id,
+                company=company,
+                subject=subj_final,
+                body_text=body_final,
+                people=people,
+                resume_storage_path=path_clean,
+            )
         return {"ok": True, "dry_run": False, "sent": len(people)}
 
     return JSONResponse(
@@ -160,6 +197,7 @@ def _run_send(
     body_text: str,
     resume_bytes: bytes | None,
     resume_filename: str,
+    resume_storage_path: str | None = None,
 ):
     company = company.strip()
     if test_mode:
@@ -216,6 +254,9 @@ def _run_send(
         body_opt=body_opt,
         resume_bytes=resume_bytes,
         resume_filename=resume_filename or "resume.pdf",
+        resume_storage_path=(
+            resume_storage_path.strip() if resume_storage_path else None
+        ),
     )
 
 
@@ -225,6 +266,7 @@ class SendJsonRequest(BaseModel):
     test_mode: bool = Field(False)
     subject: str = Field("")
     body_text: str = Field("")
+    resume_storage_path: str = Field("")
 
 
 class GoogleSessionRequest(BaseModel):
@@ -350,6 +392,7 @@ async def api_send_multipart(
     subject: str = Form(""),
     body_text: str = Form(""),
     resume: UploadFile | None = File(None),
+    resume_storage_path: str = Form(""),
 ):
     rbytes: bytes | None = None
     rname = "resume.pdf"
@@ -365,6 +408,7 @@ async def api_send_multipart(
         body_text=body_text,
         resume_bytes=rbytes,
         resume_filename=rname,
+        resume_storage_path=resume_storage_path.strip() or None,
     )
 
 
@@ -379,6 +423,7 @@ def api_send_json(request: Request, body: SendJsonRequest):
         body_text=body.body_text,
         resume_bytes=None,
         resume_filename="resume.pdf",
+        resume_storage_path=body.resume_storage_path.strip() or None,
     )
 
 
