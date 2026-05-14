@@ -31,13 +31,16 @@ import { cn } from "@/lib/utils";
 const DEMO_COMPANY = "Palantir";
 
 const DEMO_SUBJECT =
-  "Fall 2026 Software Engineering Opportunities at Palantir";
+  "Nvidia Summer 2027 Software Engineering Internships!";
 
 const DEMO_BODY = `Hi {{first_name}},
 
-I'm a CS student interested in impactful software at {{company}}.
+I'm Geoffrey Lee (Software Engineering, University of Waterloo).
 
-I'd love to learn more about Fall 2026 opportunities.`;
+I've previously worked at Shopify and would love to contribute to {{company}}'s distributed systems teams.
+
+I’ve added my resume, and would love the opportunity to interview.
+`;
 
 const DEMO_RECIPIENTS = [
   {
