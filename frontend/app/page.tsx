@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { LayoutDashboard, Lock, PenLine } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { LandingCampaignDemo } from "@/components/LandingCampaignDemo";
@@ -28,18 +28,28 @@ export default function HomePage() {
                 href="/dashboard"
                 className={cn(
                   buttonVariants({ size: "lg" }),
-                  "min-h-12 w-full justify-center rounded-xl px-6 text-base font-semibold shadow-lg shadow-primary/15 sm:w-auto"
+                  "min-h-12 w-full justify-center gap-2 rounded-xl px-6 text-base font-semibold shadow-lg shadow-primary/15 sm:w-auto"
                 )}
               >
+                <LayoutDashboard
+                  aria-hidden
+                  className="size-5"
+                  data-icon="inline-start"
+                />
                 Open dashboard
               </Link>
               <Link
                 href="/dashboard/new"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
-                  "min-h-12 w-full justify-center rounded-xl px-6 text-base font-semibold sm:w-auto"
+                  "min-h-12 w-full justify-center gap-2 rounded-xl px-6 text-base font-semibold sm:w-auto"
                 )}
               >
+                <PenLine
+                  aria-hidden
+                  className="size-5"
+                  data-icon="inline-start"
+                />
                 New campaign
               </Link>
             </div>

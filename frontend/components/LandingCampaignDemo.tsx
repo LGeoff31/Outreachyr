@@ -9,6 +9,7 @@ import {
   MousePointer2,
   Search,
   SendHorizontal,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -604,7 +605,7 @@ export function LandingCampaignDemo() {
             <p className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
               <Lock aria-hidden="true" className="size-5 text-primary" />
               {stage === "compose"
-                ? "Fetch recruiters to see personalized previews."
+                ? "Fetch recruiters from any company."
                 : "Nothing sends until you confirm."}
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -643,9 +644,14 @@ export function LandingCampaignDemo() {
                 href="/dashboard/new"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
-                  "min-h-11 w-full justify-center rounded-xl px-5 sm:w-auto"
+                  "min-h-11 w-full justify-center gap-2 rounded-xl px-5 sm:w-auto"
                 )}
               >
+                <Sparkles
+                  aria-hidden
+                  className="size-5"
+                  data-icon="inline-start"
+                />
                 Try it yourself
               </Link>
             </div>
