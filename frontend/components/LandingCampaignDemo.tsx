@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  CheckCircle2,
   FileText,
   Loader2,
   Lock,
@@ -38,7 +39,7 @@ I'm a CS student interested in impactful software at {{company}}.
 
 I'd love to learn more about Fall 2026 opportunities.`;
 
-const RECIPIENTS = [
+const DEMO_RECIPIENTS = [
   {
     name: "Aisha Khan",
     firstName: "Aisha",
@@ -60,7 +61,59 @@ const RECIPIENTS = [
     location: "New York, NY",
     initials: "DL",
   },
+  {
+    name: "Rachel Torres",
+    firstName: "Rachel",
+    role: "Campus Recruiting Lead",
+    location: "Denver, CO",
+    initials: "RT",
+  },
+  {
+    name: "James Okonkwo",
+    firstName: "James",
+    role: "Talent Partner",
+    location: "Seattle, WA",
+    initials: "JO",
+  },
+  {
+    name: "Elena Vasquez",
+    firstName: "Elena",
+    role: "Engineering Recruiter",
+    location: "Austin, TX",
+    initials: "EV",
+  },
+  {
+    name: "Sam Patel",
+    firstName: "Sam",
+    role: "University Relations",
+    location: "Chicago, IL",
+    initials: "SP",
+  },
+  {
+    name: "Jordan Blake",
+    firstName: "Jordan",
+    role: "Leadership Recruiting",
+    location: "Boston, MA",
+    initials: "JB",
+  },
+  {
+    name: "Morgan Chen",
+    firstName: "Morgan",
+    role: "Early Career Recruiter",
+    location: "Los Angeles, CA",
+    initials: "MC",
+  },
+  {
+    name: "Alex Rivera",
+    firstName: "Alex",
+    role: "Technical Sourcer",
+    location: "Washington, DC",
+    initials: "AR",
+  },
 ] as const;
+
+/** Preview cards the demo cursor visits before jumping to Send. */
+const CURSOR_EMAIL_CLICKS = 2;
 
 const STAGE_H = "min-h-[28rem] sm:min-h-[30rem]";
 
@@ -105,15 +158,75 @@ export function LandingCampaignDemo() {
   );
   const dryRunWrapRef = useRef<HTMLDivElement>(null);
   const emailCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
   const sendWrapRef = useRef<HTMLDivElement>(null);
 
   const recipientBodies = useMemo(
     () =>
-      RECIPIENTS.map((r) =>
+      DEMO_RECIPIENTS.map((r) =>
         resolveTemplate(DEMO_BODY, r.firstName, DEMO_COMPANY)
       ),
     []
   );
+
+  useEffect(() => {
+    if (stage !== "review") return;
+    const el = previewScrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "review" || focusRecipient === null) return;
+    const el = emailCardRefs.current[focusRecipient];
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [stage, focusRecipient]);
+
+  useEffect(() => {
+    if (!sent) return;
+    let cancelled = false;
+    const run = async () => {
+      const { default: confetti } = await import("canvas-confetti");
+      if (cancelled) return;
+      const root = document.getElementById("landing-campaign-demo");
+      const rect = root?.getBoundingClientRect();
+      const origin = {
+        x: rect
+          ? (rect.left + rect.width / 2) / window.innerWidth
+          : 0.5,
+        y: rect
+          ? (rect.top + rect.height * 0.36) / window.innerHeight
+          : 0.42,
+      };
+      const base = {
+        origin,
+        zIndex: 80,
+        disableForReducedMotion: true,
+      } as const;
+      confetti({
+        ...base,
+        particleCount: 110,
+        spread: 72,
+        startVelocity: 42,
+        colors: ["#3b82f6", "#6366f1", "#22c55e", "#f59e0b", "#f1f5f9"],
+      });
+      await new Promise((r) => setTimeout(r, 160));
+      if (cancelled) return;
+      confetti({
+        ...base,
+        particleCount: 65,
+        spread: 100,
+        startVelocity: 32,
+        scalar: 0.85,
+        ticks: 240,
+        colors: ["#60a5fa", "#a78bfa", "#4ade80", "#fde047"],
+      });
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [sent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +247,7 @@ export function LandingCampaignDemo() {
         x: rect.left - rootRect.left + rect.width / 2,
         y: rect.top - rootRect.top + rect.height / 2 + pad,
       });
-      await sleep(320);
+      await sleep(250);
     }
 
     async function hideCursor() {
@@ -147,16 +260,24 @@ export function LandingCampaignDemo() {
         setTypedBody(DEMO_BODY);
         setActiveField(null);
         setStage("review");
+        await sleep(120);
+        if (cancelled) return;
         setFocusRecipient(0);
         await sleep(600);
         if (cancelled) return;
         setFocusRecipient(1);
         await sleep(600);
         if (cancelled) return;
-        setFocusRecipient(2);
-        await sleep(600);
-        if (cancelled) return;
         setFocusRecipient(null);
+        const sc = previewScrollRef.current;
+        if (sc) {
+          sc.scrollTop = 0;
+          await sleep(100);
+          if (cancelled) return;
+          sc.scrollTop = sc.scrollHeight;
+          await sleep(500);
+          if (cancelled) return;
+        }
         setSending(true);
         await sleep(600);
         if (cancelled) return;
@@ -209,18 +330,32 @@ export function LandingCampaignDemo() {
       setStage("review");
       await sleep(400);
       if (cancelled) return;
+      if (previewScrollRef.current) {
+        previewScrollRef.current.scrollTop = 0;
+      }
 
-      for (let r = 0; r < RECIPIENTS.length; r++) {
+      const n = Math.min(CURSOR_EMAIL_CLICKS, DEMO_RECIPIENTS.length);
+      for (let r = 0; r < n; r++) {
         await moveCursorTo(emailCardRefs.current[r]);
         setFocusRecipient(r);
-        await sleep(750);
+        await sleep(520);
         if (cancelled) return;
       }
 
       setFocusRecipient(null);
       await hideCursor();
-      await sleep(320);
+      await sleep(200);
       if (cancelled) return;
+
+      const scroller = previewScrollRef.current;
+      if (scroller) {
+        scroller.scrollTop = 0;
+        await sleep(100);
+        if (cancelled) return;
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+        await sleep(1000);
+        if (cancelled) return;
+      }
 
       await moveCursorTo(sendWrapRef.current);
       setSending(true);
@@ -267,17 +402,17 @@ export function LandingCampaignDemo() {
       <Card className="relative w-full rounded-[1.75rem] bg-card p-5 shadow-2xl shadow-muted-foreground/15 ring-border/80 sm:p-6">
         {cursorPt ? (
           <div
-            className="pointer-events-none absolute z-20 transition-all duration-300 ease-out"
+            className="pointer-events-none absolute z-20 transition-[left,top] duration-200 ease-out"
             style={{
               left: cursorPt.x,
               top: cursorPt.y,
-              transform: "translate(-2px, -2px)",
+              transform: "translate(-2px, -2px) rotate(-14deg)",
             }}
             aria-hidden
           >
             <MousePointer2
-              className="size-6 text-primary drop-shadow-md"
-              strokeWidth={2}
+              className="size-5 text-foreground drop-shadow-sm"
+              strokeWidth={2.25}
             />
           </div>
         ) : null}
@@ -290,7 +425,7 @@ export function LandingCampaignDemo() {
             <div>
               <CardTitle>Live demo</CardTitle>
               <CardDescription>
-                Draft → personalized previews → send
+                Draft → Preview → Send
               </CardDescription>
             </div>
           </div>
@@ -383,7 +518,7 @@ export function LandingCampaignDemo() {
                     tabIndex={-1}
                   >
                     <Search aria-hidden className="size-4" />
-                    Run dry run
+                    Fetch recruiters
                   </Button>
                 </div>
               </div>
@@ -391,67 +526,73 @@ export function LandingCampaignDemo() {
 
             <div
               className={cn(
-                "absolute inset-0 flex flex-col overflow-y-auto transition-opacity duration-300 ease-out",
+                "absolute inset-0 flex min-h-0 flex-col overflow-hidden transition-opacity duration-300 ease-out",
                 stage === "review"
                   ? "z-10 opacity-100"
                   : "z-0 opacity-0 pointer-events-none"
               )}
             >
-              <div className="px-5 py-4">
+              <div className="shrink-0 px-5 py-4">
                 <p className="text-xs font-medium text-muted-foreground">
                   Outgoing mail
                 </p>
                 <p className="mt-1 text-sm font-semibold text-foreground">
-                  {RECIPIENTS.length} personalized emails
+                  {DEMO_RECIPIENTS.length} personalized emails
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Each message is filled for the recipient before you send.
+                  Scroll through every recruiter preview—then send when
+                  you&apos;re ready.
                 </p>
               </div>
-              <Separator />
+              <Separator className="shrink-0" />
 
-              <div className="flex flex-1 flex-col gap-2.5 px-5 py-4">
-                {RECIPIENTS.map((person, i) => (
-                  <div
-                    key={person.name}
-                    ref={(el) => {
-                      emailCardRefs.current[i] = el;
-                    }}
-                    className={cn(
-                      "rounded-xl border bg-muted/25 px-3 py-3 transition-colors",
-                      focusRecipient === i &&
-                        "border-primary/40 bg-primary/8 ring-1 ring-primary/20"
-                    )}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <Avatar className="size-8 shrink-0">
-                        <AvatarFallback className="text-[0.65rem]">
-                          {person.initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                          To
-                        </p>
-                        <p className="truncate text-xs font-medium text-foreground">
-                          {person.name}
-                        </p>
-                        <p className="truncate text-[0.7rem] text-muted-foreground">
-                          {person.role} · {person.location}
-                        </p>
-                        <p className="mt-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Subject
-                        </p>
-                        <p className="line-clamp-1 text-xs font-semibold text-foreground">
-                          {DEMO_SUBJECT}
-                        </p>
-                        <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-[0.75rem] leading-relaxed text-muted-foreground">
-                          {recipientBodies[i]}
-                        </p>
+              <div
+                ref={previewScrollRef}
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth px-5 py-4 [scrollbar-gutter:stable] [scrollbar-width:thin]"
+              >
+                <div className="flex flex-col gap-2.5 pb-1">
+                  {DEMO_RECIPIENTS.map((person, i) => (
+                    <div
+                      key={person.name}
+                      ref={(el) => {
+                        emailCardRefs.current[i] = el;
+                      }}
+                      className={cn(
+                        "rounded-xl border bg-muted/25 px-3 py-3 transition-colors",
+                        focusRecipient === i &&
+                          "border-primary/40 bg-primary/8 ring-1 ring-primary/20"
+                      )}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <Avatar className="size-8 shrink-0">
+                          <AvatarFallback className="text-[0.65rem]">
+                            {person.initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                            To
+                          </p>
+                          <p className="truncate text-xs font-medium text-foreground">
+                            {person.name}
+                          </p>
+                          <p className="truncate text-[0.7rem] text-muted-foreground">
+                            {person.role} · {person.location}
+                          </p>
+                          <p className="mt-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Subject
+                          </p>
+                          <p className="line-clamp-1 text-xs font-semibold text-foreground">
+                            {DEMO_SUBJECT}
+                          </p>
+                          <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-[0.75rem] leading-relaxed text-muted-foreground">
+                            {recipientBodies[i]}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -460,7 +601,7 @@ export function LandingCampaignDemo() {
             <p className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
               <Lock aria-hidden="true" className="size-5 text-primary" />
               {stage === "compose"
-                ? "Run a dry run to see outgoing previews."
+                ? "Fetch recruiters to see personalized previews."
                 : "Nothing sends until you confirm."}
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -469,9 +610,10 @@ export function LandingCampaignDemo() {
                   type="button"
                   size="lg"
                   className={cn(
-                    "pointer-events-none min-h-11 w-full gap-2 rounded-xl px-5 sm:w-auto",
+                    "pointer-events-none min-h-11 w-full gap-2 rounded-xl px-5 transition-all duration-300 sm:w-auto",
                     sending && "opacity-95",
-                    sent && "bg-primary"
+                    sent &&
+                      "bg-primary shadow-lg shadow-primary/30 ring-2 ring-primary/40 ring-offset-2 ring-offset-background"
                   )}
                   aria-hidden
                   tabIndex={-1}
@@ -483,7 +625,7 @@ export function LandingCampaignDemo() {
                     </>
                   ) : sent ? (
                     <>
-                      <SendHorizontal className="size-4" aria-hidden />
+                      <CheckCircle2 className="size-4" aria-hidden />
                       Sent
                     </>
                   ) : (
