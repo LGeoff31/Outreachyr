@@ -103,6 +103,56 @@ export async function setUserResumeAsDefault(
   }
 }
 
+export async function updateUserResumeFocus(
+  resumeId: string,
+  focus: string
+): Promise<{ row: UserResumeRow | null; error: Error | null }> {
+  try {
+    const res = await fetch(
+      `/api/user-resumes/${encodeURIComponent(resumeId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...(await resumeApiAuthHeaders()),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ focus }),
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return { row: null, error: new Error(text || res.statusText) };
+    }
+    const data = (await res.json()) as { row: UserResumeRow };
+    return { row: data.row ?? null, error: null };
+  } catch (e) {
+    return {
+      row: null,
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
+export async function deleteUserResume(
+  resumeId: string
+): Promise<{ error: Error | null }> {
+  try {
+    const res = await fetch(`/api/user-resumes/${encodeURIComponent(resumeId)}`, {
+      method: "DELETE",
+      headers: await resumeApiAuthHeaders(),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return { error: new Error(text || res.statusText) };
+    }
+    return { error: null };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
 export async function createResumeSignedUrl(
   storagePath: string
 ): Promise<{ url: string | null; error: Error | null }> {

@@ -9,7 +9,6 @@ import {
   Mail,
   Plus,
   Send,
-  Settings,
   UserRound,
 } from "lucide-react";
 
@@ -18,13 +17,12 @@ import { Separator } from "@/components/ui/separator";
 import { signOutEverywhere } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-type DashboardSection = "Campaigns" | "Templates" | "Resumes" | "Settings";
+type DashboardSection = "Campaigns" | "Templates" | "Resumes";
 
 const primaryNav = [
   { label: "Campaigns", icon: Send, href: "/dashboard" },
   { label: "Templates", icon: FileText, href: "/dashboard/templates" },
   { label: "Resumes", icon: Mail, href: "/dashboard/resumes" },
-  { label: "Settings", icon: Settings, href: "/dashboard/settings" },
 ] satisfies Array<{
   label: DashboardSection;
   icon: typeof Send;

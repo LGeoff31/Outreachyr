@@ -302,6 +302,53 @@ def set_default_resume(
     return {"ok": True}
 
 
+class PatchResumeBody(BaseModel):
+    focus: str = Field("", max_length=200)
+
+
+@router.patch("/user-resumes/{resume_id}")
+def patch_user_resume(
+    resume_id: uuid.UUID,
+    body: PatchResumeBody,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    row = session.execute(
+        select(UserResume).where(UserResume.id == resume_id, UserResume.owner_id == uid)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    focus = body.focus.strip()
+    if not focus:
+        focus = "Unassigned"
+    row.focus = focus
+    session.commit()
+    session.refresh(row)
+    return {"row": _row_json(row)}
+
+
+@router.delete("/user-resumes/{resume_id}")
+def delete_user_resume(
+    resume_id: uuid.UUID,
+    request: Request,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    row = session.execute(
+        select(UserResume).where(UserResume.id == resume_id, UserResume.owner_id == uid)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    path = row.resume_storage_path
+    session.delete(row)
+    session.commit()
+    access_token = request.state.supabase_access_token
+    storage_remove_object(access_token, path)
+    return {"ok": True}
+
+
 class SignedUrlBody(BaseModel):
     storage_path: str = Field(..., min_length=1)
 

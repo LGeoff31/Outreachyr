@@ -9,9 +9,9 @@ import {
   ChevronDown,
   FileText,
   Loader2,
-  MoreHorizontal,
   Search,
   SlidersHorizontal,
+  Trash2,
   Upload,
 } from "lucide-react";
 
@@ -34,6 +34,8 @@ import {
   fetchUserResumeRows,
   resumeApiAuthHeaders,
   setUserResumeAsDefault,
+  deleteUserResume,
+  updateUserResumeFocus,
   uploadUserResumePdf,
   type UserResumeRow,
 } from "@/lib/supabase/userResumes";
@@ -55,10 +57,25 @@ type ResumeRecord = {
   previewUrl?: string;
 };
 
-type ActiveResumePreview = { name: string; url: string };
+type ActiveResumePreview = { name: string; url: string; resumeId: string };
 
 const emptyResumes: ResumeRecord[] = [];
 const pageSize = 6;
+
+/** Suggested focus labels (`datalist`); any custom text is allowed. */
+const FOCUS_HINTS = [
+  "Unassigned",
+  "Software engineering",
+  "Data science / ML",
+  "Product management",
+  "Design",
+  "Internship",
+  "Research",
+] as const;
+
+const FOCUS_PRESET_SET = new Set<string>(FOCUS_HINTS);
+
+const CUSTOM_FOCUS_VALUE = "__custom__";
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -232,7 +249,11 @@ export function ResumesView({
     setActionError(null);
     closeResumePreview();
     if (resume.previewUrl) {
-      setActivePreview({ name: resume.name, url: resume.previewUrl });
+      setActivePreview({
+        name: resume.name,
+        url: resume.previewUrl,
+        resumeId: resume.id,
+      });
       return;
     }
     if (!resume.storagePath || !resume.id) return;
@@ -251,7 +272,7 @@ export function ResumesView({
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       previewBlobUrlRef.current = url;
-      setActivePreview({ name: resume.name, url });
+      setActivePreview({ name: resume.name, url, resumeId: resume.id });
     } catch (e) {
       setActionError(
         e instanceof Error ? e.message : "Could not open preview."
@@ -401,15 +422,15 @@ export function ResumesView({
         <Card className="rounded-2xl bg-card py-0 shadow-sm">
           <CardContent className="px-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[58rem] table-fixed border-collapse text-left text-sm lg:min-w-full">
+              <table className="w-full min-w-[64rem] table-fixed border-collapse text-left text-sm lg:min-w-full">
                 <colgroup>
-                  <col className="w-[27%]" />
-                  <col className="w-[15%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[15%]" />
+                  <col className="w-[22%]" />
                   <col className="w-[14%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[9%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[22%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border text-xs font-semibold text-foreground">
@@ -450,6 +471,36 @@ export function ResumesView({
                         key={resume.id}
                         resume={resume}
                         onPreview={() => void openResumePreview(resume)}
+                        onFocusCommit={async (nextFocus) => {
+                          setActionError(null);
+                          if (!isSupabaseConfigured()) {
+                            setResumes((current) =>
+                              current.map((item) =>
+                                item.id === resume.id
+                                  ? { ...item, focus: nextFocus }
+                                  : item
+                              )
+                            );
+                            return;
+                          }
+                          const { row, error } = await updateUserResumeFocus(
+                            resume.id,
+                            nextFocus
+                          );
+                          if (error) {
+                            setActionError(error.message);
+                            throw error;
+                          }
+                          if (row) {
+                            setResumes((current) =>
+                              current.map((item) =>
+                                item.id === resume.id
+                                  ? rowToResumeRecord(row)
+                                  : item
+                              )
+                            );
+                          }
+                        }}
                         onSetDefault={async () => {
                           setActionError(null);
                           if (
@@ -474,6 +525,37 @@ export function ResumesView({
                                     ? "Ready"
                                     : item.status,
                             }))
+                          );
+                        }}
+                        onDelete={async () => {
+                          if (
+                            !window.confirm(
+                              `Remove “${resume.name}” from your library? This cannot be undone.`
+                            )
+                          ) {
+                            return;
+                          }
+                          setActionError(null);
+                          if (activePreview?.resumeId === resume.id) {
+                            closeResumePreview();
+                          }
+                          if (!isSupabaseConfigured()) {
+                            if (resume.previewUrl) {
+                              objectUrlsRef.current.delete(resume.previewUrl);
+                              URL.revokeObjectURL(resume.previewUrl);
+                            }
+                            setResumes((current) =>
+                              current.filter((item) => item.id !== resume.id)
+                            );
+                            return;
+                          }
+                          const { error } = await deleteUserResume(resume.id);
+                          if (error) {
+                            setActionError(error.message);
+                            return;
+                          }
+                          setResumes((current) =>
+                            current.filter((item) => item.id !== resume.id)
                           );
                         }}
                       />
@@ -629,12 +711,38 @@ function ResumesEmptyState({ hasResumes }: { hasResumes: boolean }) {
 function ResumeRow({
   resume,
   onPreview,
+  onFocusCommit,
   onSetDefault,
+  onDelete,
 }: {
   resume: ResumeRecord;
   onPreview: () => void;
+  onFocusCommit: (focus: string) => void | Promise<void>;
   onSetDefault: () => void | Promise<void>;
+  onDelete: () => void | Promise<void>;
 }) {
+  const [draftFocus, setDraftFocus] = useState(resume.focus);
+  const [savingFocus, setSavingFocus] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setDraftFocus(resume.focus);
+  }, [resume.id, resume.focus]);
+
+  async function commitFocus() {
+    const trimmed = draftFocus.trim();
+    const next = trimmed.length > 0 ? trimmed : "Unassigned";
+    if (next === resume.focus) return;
+    setSavingFocus(true);
+    try {
+      await onFocusCommit(next);
+    } catch {
+      setDraftFocus(resume.focus);
+    } finally {
+      setSavingFocus(false);
+    }
+  }
+
   const isDefault = resume.status === "Default";
   const canPreview = Boolean(
     resume.previewUrl || (resume.storagePath && resume.id)
@@ -655,7 +763,77 @@ function ResumeRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-muted-foreground">{resume.focus}</td>
+      <td className="min-w-0 overflow-hidden px-4 py-3 align-top">
+        <div className="flex min-w-0 max-w-full flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <select
+              value={
+                FOCUS_PRESET_SET.has(draftFocus)
+                  ? draftFocus
+                  : CUSTOM_FOCUS_VALUE
+              }
+              disabled={savingFocus}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === CUSTOM_FOCUS_VALUE) {
+                  if (FOCUS_PRESET_SET.has(draftFocus)) {
+                    setDraftFocus("");
+                  }
+                  return;
+                }
+                setDraftFocus(v);
+                void (async () => {
+                  if (v === resume.focus) return;
+                  setSavingFocus(true);
+                  try {
+                    await onFocusCommit(v);
+                  } catch {
+                    setDraftFocus(resume.focus);
+                  } finally {
+                    setSavingFocus(false);
+                  }
+                })();
+              }}
+              className={cn(
+                "h-9 w-full min-w-0 rounded-lg border border-input bg-background px-2 text-sm text-foreground",
+                "outline-none transition focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
+                savingFocus && "cursor-not-allowed opacity-60"
+              )}
+              aria-label={`Focus preset for ${resume.name}`}
+            >
+              {FOCUS_HINTS.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+              <option value={CUSTOM_FOCUS_VALUE}>Custom…</option>
+            </select>
+            {savingFocus ? (
+              <Loader2
+                className="size-4 shrink-0 animate-spin text-muted-foreground"
+                aria-hidden
+              />
+            ) : null}
+          </div>
+          {!FOCUS_PRESET_SET.has(draftFocus) ? (
+            <Input
+              value={draftFocus}
+              onChange={(e) => setDraftFocus(e.target.value)}
+              onBlur={() => void commitFocus()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              placeholder="Type a custom label"
+              className="h-9 min-w-0 rounded-lg text-sm"
+              aria-label={`Custom focus for ${resume.name}`}
+              disabled={savingFocus}
+            />
+          ) : null}
+        </div>
+      </td>
       <td className="px-4 py-3">
         <span className="block font-medium text-foreground">
           {resume.fileType}
@@ -669,11 +847,13 @@ function ResumeRow({
       <td className="px-4 py-3 text-muted-foreground">
         {formatUpdatedAt(resume.updatedAt)}
       </td>
-      <td className="px-4 py-3">
-        <StatusBadge status={resume.status} />
+      <td className="min-w-0 overflow-hidden px-4 py-3 align-middle">
+        <div className="min-w-0 overflow-hidden">
+          <StatusBadge status={resume.status} />
+        </div>
       </td>
-      <td className="px-4 py-3 sm:px-5">
-        <div className="flex justify-end gap-2">
+      <td className="relative z-20 bg-background px-4 py-3 align-middle sm:px-5">
+        <div className="flex shrink-0 flex-nowrap justify-end gap-2">
           <Button
             type="button"
             variant="outline"
@@ -694,19 +874,40 @@ function ResumeRow({
             variant="outline"
             size="sm"
             disabled={isDefault}
+            title={
+              isDefault
+                ? "This resume is already the default for new campaigns"
+                : "Use this resume as the default when starting a new campaign"
+            }
             onClick={onSetDefault}
-            className="min-h-8 rounded-xl px-3"
+            className="min-h-8 min-w-[7.5rem] rounded-xl px-3"
           >
-            {isDefault ? "Default" : "Set default"}
+            Set default
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`More actions for ${resume.name}`}
-            className="rounded-xl text-muted-foreground"
+            title="Remove from library"
+            aria-label={`Delete ${resume.name} from library`}
+            disabled={deleting || savingFocus}
+            className="rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() =>
+              void (async () => {
+                setDeleting(true);
+                try {
+                  await onDelete();
+                } finally {
+                  setDeleting(false);
+                }
+              })()
+            }
           >
-            <MoreHorizontal aria-hidden="true" />
+            {deleting ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Trash2 className="size-4" aria-hidden />
+            )}
           </Button>
         </div>
       </td>
@@ -719,7 +920,7 @@ function StatusBadge({ status }: { status: ResumeStatus }) {
     <Badge
       variant="secondary"
       className={cn(
-        "rounded-lg px-2.5 font-semibold",
+        "box-border max-w-full min-w-0 shrink rounded-lg px-2.5 py-0.5 text-xs font-semibold",
         status === "Ready" &&
           "bg-[hsl(var(--chart-2)/0.12)] text-[hsl(var(--chart-2))]",
         status === "Default" &&
@@ -730,9 +931,13 @@ function StatusBadge({ status }: { status: ResumeStatus }) {
       )}
     >
       {status === "Default" && (
-        <CheckCircle2 data-icon="inline-start" aria-hidden="true" />
+        <CheckCircle2
+          className="size-3 shrink-0"
+          data-icon="inline-start"
+          aria-hidden="true"
+        />
       )}
-      {status}
+      <span className="min-w-0 truncate">{status}</span>
     </Badge>
   );
 }
