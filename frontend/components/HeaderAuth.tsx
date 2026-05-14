@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
+import { LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
 import { signOutEverywhere } from "@/lib/auth";
 import {
@@ -20,12 +22,36 @@ function initialsFromEmail(email: string) {
   return (email[0] ?? "?").toUpperCase();
 }
 
+function stringField(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Google / OIDC avatars from Supabase user (metadata + identities). */
+function avatarUrlFromUser(user: User | null | undefined): string | null {
+  if (!user) return null;
+  const meta = user.user_metadata ?? {};
+  const fromMeta =
+    stringField(meta.avatar_url) ?? stringField(meta.picture);
+  if (fromMeta) return fromMeta;
+  const google = user.identities?.find((i) => i.provider === "google");
+  const data = google?.identity_data ?? {};
+  return stringField(data.avatar_url) ?? stringField(data.picture);
+}
+
+type HeaderUser = { email: string; avatarUrl: string | null };
+
+function userToHeader(user: User | null | undefined): HeaderUser | null {
+  const email = user?.email?.trim();
+  if (!email) return null;
+  return { email, avatarUrl: avatarUrlFromUser(user) };
+}
+
 export function HeaderAuth() {
-  const [email, setEmail] = useState<string | null | undefined>(undefined);
+  const [user, setUser] = useState<HeaderUser | null | undefined>(undefined);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      setEmail(null);
+      setUser(null);
       return;
     }
 
@@ -35,16 +61,16 @@ export function HeaderAuth() {
     supabase.auth
       .getUser()
       .then(({ data }) => {
-        if (!cancelled) setEmail(data.user?.email ?? null);
+        if (!cancelled) setUser(userToHeader(data.user));
       })
       .catch(() => {
-        if (!cancelled) setEmail(null);
+        if (!cancelled) setUser(null);
       });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setEmail(session?.user.email ?? null);
+      setUser(userToHeader(session?.user ?? null));
     });
 
     return () => {
@@ -53,7 +79,7 @@ export function HeaderAuth() {
     };
   }, []);
 
-  if (email === undefined) {
+  if (user === undefined) {
     return (
       <div
         className="flex min-h-11 items-center gap-3"
@@ -65,7 +91,8 @@ export function HeaderAuth() {
     );
   }
 
-  if (email) {
+  if (user) {
+    const { email, avatarUrl } = user;
     return (
       <div className="flex min-h-11 max-w-[min(100vw-8rem,28rem)] items-center gap-2 sm:gap-3">
         <Link
@@ -74,13 +101,17 @@ export function HeaderAuth() {
           className="flex min-w-0 items-center gap-2 rounded-xl py-1 pr-1 transition hover:bg-accent/60 sm:gap-3 sm:pr-2"
         >
           <Avatar className="size-9 shrink-0">
+            {avatarUrl ? (
+              <AvatarImage
+                src={avatarUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+              />
+            ) : null}
             <AvatarFallback className="text-xs font-semibold">
               {initialsFromEmail(email)}
             </AvatarFallback>
           </Avatar>
-          <span className="hidden min-w-0 truncate text-sm font-medium text-foreground sm:inline">
-            {email}
-          </span>
         </Link>
         <button
           type="button"
@@ -90,11 +121,12 @@ export function HeaderAuth() {
           )}
           onClick={() => {
             void signOutEverywhere().finally(() => {
-              setEmail(null);
+              setUser(null);
               window.location.href = "/";
             });
           }}
         >
+          <LogOut data-icon="inline-start" aria-hidden className="size-3.5" />
           Sign out
         </button>
       </div>
