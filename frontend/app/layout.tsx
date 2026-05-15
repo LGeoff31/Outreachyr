@@ -30,9 +30,9 @@ export default function RootLayout({
       className={`${geist.variable} ${geistMono.variable}`}
       data-scroll-behavior="smooth"
     >
-      <body className="font-sans antialiased">
+      <body className="flex min-h-screen flex-col font-sans antialiased">
         <Header />
-        <main>{children}</main>
+        <main className="flex-1">{children}</main>
         <SiteFooter />
       </body>
     </html>
