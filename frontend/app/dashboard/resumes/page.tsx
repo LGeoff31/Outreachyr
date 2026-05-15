@@ -1,4 +1,3 @@
-import { DashboardShell } from "@/components/DashboardShell";
 import { ResumesView } from "@/components/ResumesView";
 
 export const metadata = {
@@ -6,9 +5,5 @@ export const metadata = {
 };
 
 export default function ResumesPage() {
-  return (
-    <DashboardShell active="Resumes">
-      <ResumesView />
-    </DashboardShell>
-  );
+  return <ResumesView />;
 }

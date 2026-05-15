@@ -1,4 +1,3 @@
-import { DashboardShell } from "@/components/DashboardShell";
 import { TemplatesView } from "@/components/TemplatesView";
 
 export const metadata = {
@@ -6,9 +5,5 @@ export const metadata = {
 };
 
 export default function TemplatesPage() {
-  return (
-    <DashboardShell active="Templates">
-      <TemplatesView />
-    </DashboardShell>
-  );
+  return <TemplatesView />;
 }

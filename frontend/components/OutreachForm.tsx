@@ -929,7 +929,7 @@ export function OutreachForm() {
 
       <div
         data-testid="campaign-action-bar"
-        className="border-t border-border bg-background/95 backdrop-blur-xl lg:fixed lg:inset-x-0 lg:bottom-0 lg:z-40"
+        className="border-t border-border bg-background/95 backdrop-blur-xl lg:fixed lg:bottom-0 lg:left-56 lg:right-0 lg:z-30"
       >
         <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-3 px-5 py-3 sm:px-8 lg:min-h-16 lg:flex-row lg:items-center lg:justify-between lg:px-10 lg:py-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
