@@ -399,7 +399,7 @@ export function LandingCampaignDemo() {
 
   return (
     <div
-      className="relative min-w-0 max-w-[calc(100vw-2.5rem)] self-start scroll-mt-24 sm:max-w-none"
+      className="relative min-w-0 max-w-[calc(100vw-2.5rem)] self-center scroll-mt-24 sm:max-w-none"
       id="landing-campaign-demo"
     >
       <div className="absolute inset-0 translate-y-10 rounded-[2rem] bg-primary/10 blur-3xl" />
