@@ -9,4 +9,5 @@ COMPANY_EMAIL_HOST = {
     "shopify": "shopify.com",
     "capital one": "capitalone.com",
     "notion": "notion.com",
+    "databricks": "databricks.com"
 }

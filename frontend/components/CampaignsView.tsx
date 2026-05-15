@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -9,6 +10,8 @@ import {
   ChevronDown,
   Clock,
   FileText,
+  Copy,
+  ExternalLink,
   Loader2,
   MoreHorizontal,
   Search,
@@ -33,6 +36,7 @@ import {
   fetchCampaignRows,
   type CampaignApiRow,
 } from "@/lib/supabase/campaigns";
+import { buttonVariants } from "@/components/ui/button";
 
 type CampaignStatus = "Review ready" | "Sent" | "Draft" | "Paused";
 
@@ -515,6 +519,7 @@ function FilterSelect({
 function CampaignRow({ campaign }: { campaign: Campaign }) {
   const actionLabel = campaign.status === "Draft" ? "Edit" : "Open";
   const { date, time } = splitUpdatedAtLabel(campaign.updatedAtLabel);
+  const href = `/dashboard/new?campaign=${encodeURIComponent(campaign.id)}`;
 
   return (
     <tr className="border-b border-border last:border-b-0">
@@ -576,26 +581,79 @@ function CampaignRow({ campaign }: { campaign: Campaign }) {
       </td>
       <td className="px-4 py-3 sm:px-5">
         <div className="flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="min-h-8 rounded-xl px-3 text-primary"
+          <Link
+            href={href}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "min-h-8 rounded-xl px-3 text-primary"
+            )}
           >
             {actionLabel}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`More actions for ${campaign.title}`}
-            className="rounded-xl text-muted-foreground"
-          >
-            <MoreHorizontal aria-hidden="true" />
-          </Button>
+          </Link>
+          <CampaignRowActionsMenu title={campaign.title} href={href} />
         </div>
       </td>
     </tr>
+  );
+}
+
+function CampaignRowActionsMenu({
+  title,
+  href,
+}: {
+  title: string;
+  href: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
+  return (
+    <details className="relative z-10">
+      <summary
+        className={cn(
+          buttonVariants({ variant: "ghost", size: "icon-sm" }),
+          "cursor-pointer list-none rounded-xl text-muted-foreground [&::-webkit-details-marker]:hidden"
+        )}
+        aria-label={`More actions for ${title}`}
+      >
+        <MoreHorizontal aria-hidden="true" />
+      </summary>
+      <div
+        role="menu"
+        className="absolute right-0 top-full mt-1 min-w-[12rem] rounded-xl border border-border bg-popover py-1 shadow-md"
+      >
+        <Link
+          href={href}
+          role="menuitem"
+          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground hover:bg-accent"
+        >
+          <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
+          Open campaign
+        </Link>
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-accent"
+          onClick={() => {
+            const full =
+              typeof window !== "undefined"
+                ? `${window.location.origin}${href}`
+                : href;
+            void navigator.clipboard.writeText(full).then(() => {
+              setCopied(true);
+            });
+          }}
+        >
+          <Copy aria-hidden="true" className="size-4 shrink-0" />
+          {copied ? "Link copied" : "Copy link"}
+        </button>
+      </div>
+    </details>
   );
 }
 

@@ -647,11 +647,6 @@ export function LandingCampaignDemo() {
                   "min-h-11 w-full justify-center gap-2 rounded-xl px-5 sm:w-auto"
                 )}
               >
-                <Sparkles
-                  aria-hidden
-                  className="size-5"
-                  data-icon="inline-start"
-                />
                 Try it yourself
               </Link>
             </div>

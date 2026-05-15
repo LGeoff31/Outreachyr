@@ -130,11 +130,11 @@ function LoginInner() {
     <section className="flex min-h-[calc(100svh-4rem)] items-center justify-center bg-background px-4 py-10">
       <Card className="w-full max-w-md rounded-2xl border-border/80 shadow-sm shadow-black/[0.03] dark:shadow-black/20">
         <CardHeader className="space-y-1 pb-2">
-          <CardTitle className="text-2xl font-semibold tracking-tight text-foreground">
+          <CardTitle className="text-2xl font-semibold tracking-tight text-foreground text-center">
             Welcome back
           </CardTitle>
-          <CardDescription className="text-base text-muted-foreground">
-            Sign in with Google to connect Gmail and open your dashboard.
+          <CardDescription className="text-base text-muted-foreground text-center">
+            Sign in with Google to connect your Gmail account.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

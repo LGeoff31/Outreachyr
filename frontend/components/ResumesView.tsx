@@ -1,16 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
   FileText,
   Loader2,
   Search,
-  SlidersHorizontal,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -129,9 +126,6 @@ export function ResumesView({
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [query, setQuery] = useState("");
-  const [focus, setFocus] = useState("All roles");
-  const [status, setStatus] = useState("All statuses");
-  const [sortBy, setSortBy] = useState("Last updated");
   const [page, setPage] = useState(1);
   const [activePreview, setActivePreview] = useState<ActiveResumePreview | null>(
     null
@@ -199,14 +193,6 @@ export function ResumesView({
     };
   }, [activePreview, closeResumePreview]);
 
-  const focusOptions = useMemo(
-    () => [
-      "All roles",
-      ...Array.from(new Set(resumes.map((resume) => resume.focus))).sort(),
-    ],
-    [resumes]
-  );
-
   const filteredResumes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const nextResumes = resumes.filter((resume) => {
@@ -215,19 +201,12 @@ export function ResumesView({
         `${resume.name} ${resume.focus} ${resume.fileType} ${resume.status}`
           .toLowerCase()
           .includes(normalizedQuery);
-      const matchesFocus = focus === "All roles" || resume.focus === focus;
-      const matchesStatus =
-        status === "All statuses" || resume.status === status;
-
-      return matchesQuery && matchesFocus && matchesStatus;
+      return matchesQuery;
     });
-
-    return nextResumes.sort((a, b) => {
-      if (sortBy === "Name") return a.name.localeCompare(b.name);
-      if (sortBy === "Role / Focus") return a.focus.localeCompare(b.focus);
-      return b.updatedAt.localeCompare(a.updatedAt);
-    });
-  }, [focus, query, resumes, sortBy, status]);
+    return nextResumes.sort(
+      (a, b) => b.updatedAt.localeCompare(a.updatedAt)
+    );
+  }, [query, resumes]);
 
   const pageCount = Math.max(1, Math.ceil(filteredResumes.length / pageSize));
   const safePage = Math.min(page, pageCount);
@@ -381,8 +360,8 @@ export function ResumesView({
           </div>
         </div>
 
-        <section className="grid gap-3 lg:grid-cols-[minmax(18rem,1fr)_minmax(16rem,0.62fr)_minmax(16rem,0.62fr)_minmax(16rem,0.62fr)]">
-          <label className="relative block min-w-0">
+        <section className="flex flex-col gap-3">
+          <label className="relative block min-w-0 max-w-[30rem]">
             <span className="sr-only">Search resumes</span>
             <Search
               aria-hidden="true"
@@ -397,26 +376,6 @@ export function ResumesView({
               className="h-10 rounded-xl bg-card pl-10 text-sm"
             />
           </label>
-
-          <FilterSelect
-            label="Role / Focus"
-            value={focus}
-            onChange={(value) => resetPage(() => setFocus(value))}
-            options={focusOptions}
-          />
-          <FilterSelect
-            label="Status"
-            value={status}
-            onChange={(value) => resetPage(() => setStatus(value))}
-            options={["All statuses", "Ready", "Default", "Draft", "Archived"]}
-          />
-          <FilterSelect
-            label="Sort by"
-            value={sortBy}
-            onChange={(value) => resetPage(() => setSortBy(value))}
-            options={["Last updated", "Name", "Role / Focus"]}
-            icon={<SlidersHorizontal aria-hidden="true" className="size-4" />}
-          />
         </section>
 
         <Card className="rounded-2xl bg-card py-0 shadow-sm">
@@ -577,7 +536,7 @@ export function ResumesView({
               <p>
                 {filteredResumes.length === 0
                   ? hasResumes
-                    ? "No resumes match your filters"
+                    ? "No resumes match your search"
                     : "No resumes yet"
                   : `Showing ${visibleStart} to ${visibleEnd} of ${filteredResumes.length} resumes`}
               </p>
@@ -652,42 +611,6 @@ export function ResumesView({
   );
 }
 
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-  icon,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  icon?: ReactNode;
-}) {
-  return (
-    <label className="relative block">
-      <span className="absolute left-3 top-1 text-[0.7rem] font-medium leading-none text-muted-foreground">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 pb-1.5 pt-4 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-        {icon ?? <ChevronDown aria-hidden="true" className="size-4" />}
-      </span>
-    </label>
-  );
-}
-
 function ResumesEmptyState({ hasResumes }: { hasResumes: boolean }) {
   return (
     <Empty className="min-h-56 border border-dashed border-border bg-muted/40">
@@ -700,7 +623,7 @@ function ResumesEmptyState({ hasResumes }: { hasResumes: boolean }) {
         </EmptyTitle>
         <EmptyDescription>
           {hasResumes
-            ? "Adjust your search or filters to see more resumes."
+            ? "Try different keywords in your search."
             : "Upload a resume when you are ready to attach it to campaigns."}
         </EmptyDescription>
       </EmptyHeader>

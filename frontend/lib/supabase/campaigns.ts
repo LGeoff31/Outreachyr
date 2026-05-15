@@ -13,6 +13,16 @@ export type CampaignApiRow = {
   sent_at: string | null;
 };
 
+export type CampaignDetailResponse = {
+  id: string;
+  company: string;
+  subject: string;
+  body_text: string;
+  status: string;
+  resume_storage_path: string | null;
+  recipients: Array<{ email: string; greeting_name: string }>;
+};
+
 export async function fetchCampaignRows(): Promise<{
   rows: CampaignApiRow[];
   error: Error | null;
@@ -33,6 +43,33 @@ export async function fetchCampaignRows(): Promise<{
   } catch (e) {
     return {
       rows: [],
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
+export async function fetchCampaignDetail(
+  id: string
+): Promise<{ data: CampaignDetailResponse | null; error: Error | null }> {
+  try {
+    const res = await fetch(`/api/campaigns/${encodeURIComponent(id)}`, {
+      headers: await resumeApiAuthHeaders(),
+    });
+    if (res.status === 404) {
+      return { data: null, error: new Error("Campaign not found") };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      return {
+        data: null,
+        error: new Error(text || `${res.status} ${res.statusText}`),
+      };
+    }
+    const data = (await res.json()) as CampaignDetailResponse;
+    return { data, error: null };
+  } catch (e) {
+    return {
+      data: null,
       error: e instanceof Error ? e : new Error(String(e)),
     };
   }

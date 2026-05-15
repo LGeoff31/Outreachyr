@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   AlertCircle,
@@ -56,6 +57,10 @@ import {
   type EmailTemplateRow as SavedEmailTemplate,
 } from "@/lib/supabase/emailTemplates";
 import {
+  fetchCampaignDetail,
+  type CampaignDetailResponse,
+} from "@/lib/supabase/campaigns";
+import {
   fetchUserResumeRows,
   resumeApiAuthHeaders,
   type UserResumeRow,
@@ -88,6 +93,9 @@ I'm reaching out to learn more about opportunities for Fall 2026.`;
 const mergeFields = ["{{first_name}}", "{{company}}", "{{role}}"];
 
 export function OutreachForm() {
+  const searchParams = useSearchParams();
+  const campaignFromUrl = searchParams.get("campaign")?.trim() || null;
+
   const [company, setCompany] = useState(defaultCompany);
   const [testMode, setTestMode] = useState(false);
   const [subject, setSubject] = useState(defaultSubject);
@@ -122,6 +130,15 @@ export function OutreachForm() {
   );
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState<"preview" | "send" | null>(null);
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [campaignLoadError, setCampaignLoadError] = useState<string | null>(
+    null
+  );
+  const [loadedCampaign, setLoadedCampaign] =
+    useState<CampaignDetailResponse | null>(null);
+  const [pendingCampaignResumePath, setPendingCampaignResumePath] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     fetchCompanyKeys()
@@ -172,8 +189,10 @@ export function OutreachForm() {
           return;
         }
         setSavedResumes(rows);
-        const defaultRow = rows.find((r) => r.is_default);
-        if (defaultRow) await applyLibraryResume(defaultRow);
+        if (!campaignFromUrl) {
+          const defaultRow = rows.find((r) => r.is_default);
+          if (defaultRow) await applyLibraryResume(defaultRow);
+        }
       } finally {
         if (!cancelled) setSavedResumesLoading(false);
       }
@@ -181,7 +200,7 @@ export function OutreachForm() {
     return () => {
       cancelled = true;
     };
-  }, [applyLibraryResume]);
+  }, [applyLibraryResume, campaignFromUrl]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -207,9 +226,113 @@ export function OutreachForm() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!campaignFromUrl) {
+      setLoadedCampaign(null);
+      setCampaignLoadError(null);
+      setCampaignLoading(false);
+      setPendingCampaignResumePath(null);
+      setCompany(defaultCompany);
+      setSubject(defaultSubject);
+      setBodyText(defaultMessage);
+      setRecipients([]);
+      setReviewed(false);
+      setTestMode(false);
+      setErr(false);
+      setMessage(
+        "Run a dry run to find recruiters and review every message before sending."
+      );
+      setFile(null);
+      setSelectedSavedResumeId(null);
+      setSelectedSavedTemplateId(null);
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      setCampaignLoadError("Sign in to load this campaign.");
+      setLoadedCampaign(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setCampaignLoading(true);
+      setCampaignLoadError(null);
+      const { data, error } = await fetchCampaignDetail(campaignFromUrl);
+      if (cancelled) return;
+      if (error || !data) {
+        setCampaignLoadError(error?.message ?? "Could not load campaign.");
+        setCampaignLoading(false);
+        setLoadedCampaign(null);
+        setPendingCampaignResumePath(null);
+        return;
+      }
+      setCompany(data.company);
+      setSubject(data.subject);
+      setBodyText(data.body_text);
+      setRecipients(
+        data.recipients.map((r) => ({
+          email: r.email,
+          greeting_name: r.greeting_name?.trim()
+            ? r.greeting_name
+            : undefined,
+        }))
+      );
+      setTestMode(false);
+      setSelectedSavedTemplateId(null);
+      const sent = data.status.toLowerCase() === "sent";
+      setReviewed(sent && data.recipients.length > 0);
+      setLoadedCampaign(data);
+      setErr(false);
+      setMessage(
+        sent
+          ? "This campaign was already sent. Review the copy and recipients below; dry run and send are disabled."
+          : "Campaign loaded. Run a dry run to refresh recipients, then send when ready."
+      );
+      const path = data.resume_storage_path?.trim();
+      if (path) {
+        setPendingCampaignResumePath(path);
+        setFile(null);
+        setSelectedSavedResumeId(null);
+      } else {
+        setPendingCampaignResumePath(null);
+        setFile(null);
+        setSelectedSavedResumeId(null);
+      }
+      setCampaignLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaignFromUrl]);
+
+  useEffect(() => {
+    if (!pendingCampaignResumePath || savedResumesLoading) return;
+    const row = savedResumes.find(
+      (r) => r.resume_storage_path === pendingCampaignResumePath
+    );
+    if (row) {
+      void applyLibraryResume(row);
+      setPendingCampaignResumePath(null);
+    } else if (savedResumes.length > 0) {
+      setPendingCampaignResumePath(null);
+    }
+  }, [
+    pendingCampaignResumePath,
+    savedResumes,
+    savedResumesLoading,
+    applyLibraryResume,
+  ]);
+
   const companyReady =
     testMode || company.trim().length > 0;
-  const canSend = recipients.length > 0 && reviewed && loading === null;
+  const campaignActionsLocked =
+    loadedCampaign?.status?.toLowerCase() === "sent";
+  const canSend =
+    recipients.length > 0 &&
+    reviewed &&
+    loading === null &&
+    !campaignActionsLocked;
   const companyInvalid = err && !companyReady;
 
   const appendMergeField = useCallback((token: string) => {
@@ -222,6 +345,14 @@ export function OutreachForm() {
       if (!companyReady) {
         setErr(true);
         setMessage("Enter a company name before running the dry run.");
+        return;
+      }
+
+      if (dryRun && campaignActionsLocked) {
+        setErr(false);
+        setMessage(
+          "This campaign was already sent. Open a new campaign to run another dry run."
+        );
         return;
       }
 
@@ -312,6 +443,7 @@ export function OutreachForm() {
     },
     [
       bodyText,
+      campaignActionsLocked,
       company,
       companyReady,
       file,
@@ -334,12 +466,47 @@ export function OutreachForm() {
       <div className="mx-auto w-full max-w-[90rem] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
         <div className="min-w-0">
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            New campaign
+            {campaignFromUrl
+              ? loadedCampaign?.status?.toLowerCase() === "sent"
+                ? "Campaign (sent)"
+                : "Campaign"
+              : "New campaign"}
           </h1>
           <p className="mt-2 text-base leading-7 text-muted-foreground">
-            Step 1 of 3. Find recruiters, draft emails, and review before you
-            send.
+            {campaignFromUrl
+              ? "Review what you sent, or use Dry run / Send on drafts still in progress."
+              : "Step 1 of 3. Find recruiters, draft emails, and review before you send."}
           </p>
+          {campaignLoading ? (
+            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2
+                aria-hidden="true"
+                className="size-4 animate-spin"
+              />
+              Loading campaign…
+            </p>
+          ) : null}
+          {campaignLoadError ? (
+            <p className="mt-3 text-sm text-destructive" role="alert">
+              {campaignLoadError}{" "}
+              <Link
+                href="/dashboard"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Back to campaigns
+              </Link>
+            </p>
+          ) : null}
+          {campaignFromUrl && loadedCampaign && !campaignLoading ? (
+            <p className="mt-3 text-sm">
+              <Link
+                href="/dashboard/new"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Start a new campaign
+              </Link>
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(26rem,0.9fr)_minmax(34rem,1.35fr)]">
@@ -755,6 +922,7 @@ export function OutreachForm() {
             loading={loading}
             err={err}
             message={message}
+            actionsLocked={campaignActionsLocked}
           />
         </div>
       </div>
@@ -769,7 +937,7 @@ export function OutreachForm() {
               type="submit"
               variant="outline"
               size="lg"
-              disabled={loading !== null}
+              disabled={loading !== null || campaignActionsLocked}
               className="min-h-10 rounded-xl px-6"
             >
               {loading === "preview" && (
@@ -790,14 +958,16 @@ export function OutreachForm() {
 
           <Field
             orientation="horizontal"
-            data-disabled={recipients.length === 0 || undefined}
+            data-disabled={
+              recipients.length === 0 || campaignActionsLocked || undefined
+            }
             className="rounded-xl px-0"
           >
             <Checkbox
               id="reviewed"
               checked={reviewed}
               onCheckedChange={(checked) => setReviewed(checked === true)}
-              disabled={recipients.length === 0}
+              disabled={recipients.length === 0 || campaignActionsLocked}
             />
             <FieldContent>
               <FieldLabel htmlFor="reviewed">
@@ -872,6 +1042,7 @@ function ReviewPanel({
   loading,
   err,
   message,
+  actionsLocked = false,
 }: {
   recipients: Recipient[];
   bodyText: string;
@@ -880,6 +1051,7 @@ function ReviewPanel({
   loading: "preview" | "send" | null;
   err: boolean;
   message: string;
+  actionsLocked?: boolean;
 }) {
   return (
     <Card size="sm" className="min-w-0 rounded-2xl bg-card shadow-sm">
@@ -905,7 +1077,7 @@ function ReviewPanel({
             type="submit"
             variant="ghost"
             size="sm"
-            disabled={loading !== null}
+            disabled={loading !== null || actionsLocked}
             className="text-primary"
           >
             {loading === "preview" ? (

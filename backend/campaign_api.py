@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -114,3 +114,48 @@ def list_campaigns(
         .all()
     )
     return {"rows": [_campaign_row_json(session, r) for r in rows]}
+
+
+def _campaign_detail_json(session: Session, camp: Campaign) -> dict[str, Any]:
+    recipients = (
+        session.execute(
+            select(CampaignRecipient)
+            .where(CampaignRecipient.campaign_id == camp.id)
+            .order_by(CampaignRecipient.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "id": str(camp.id),
+        "company": camp.company,
+        "subject": camp.subject,
+        "body_text": camp.body_text or "",
+        "status": camp.status,
+        "resume_storage_path": camp.resume_storage_path,
+        "recipients": [
+            {
+                "email": r.email,
+                "greeting_name": r.greeting_name or "",
+            }
+            for r in recipients
+        ],
+    }
+
+
+@router.get("/campaigns/{campaign_id}")
+def get_campaign(
+    campaign_id: uuid.UUID,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    camp = session.scalar(
+        select(Campaign).where(
+            Campaign.id == campaign_id,
+            Campaign.owner_id == uid,
+        )
+    )
+    if camp is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return _campaign_detail_json(session, camp)

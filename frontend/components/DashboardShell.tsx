@@ -44,7 +44,7 @@ export function DashboardShell({
   return (
     <div className="min-h-[calc(100vh-4rem)] overflow-x-hidden bg-background">
       <div className="lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <aside className="hidden border-r border-border bg-background lg:sticky lg:top-0 lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col">
+        <aside className="hidden border-r border-border bg-background lg:flex lg:flex-col lg:self-stretch">
           <div className="p-5">
             <Link
               href="/dashboard/new"
