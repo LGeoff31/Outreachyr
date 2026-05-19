@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   CheckCircle2,
   FileText,
@@ -15,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -640,15 +639,6 @@ export function LandingCampaignDemo() {
                   )}
                 </Button>
               </div>
-              <Link
-                href="/dashboard/new"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "lg" }),
-                  "min-h-11 w-full justify-center gap-2 rounded-xl px-5 sm:w-auto"
-                )}
-              >
-                Try it yourself
-              </Link>
             </div>
           </div>
         </CardContent>

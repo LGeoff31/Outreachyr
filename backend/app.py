@@ -29,7 +29,6 @@ from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
 from campaign_api import persist_sent_campaign, router as campaign_router
 from email_template_api import router as email_template_router
 from user_resume_api import router as user_resume_router
-from utils import domain_for_company
 
 _app_init_done = False
 
@@ -208,18 +207,6 @@ def _run_send(
             return JSONResponse(
                 status_code=400,
                 content={"ok": False, "error": "Enter a company name."},
-            )
-
-        if domain_for_company(company) is None:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "ok": False,
-                    "error": (
-                        f'Company "{company}" is not in mapping.py — '
-                        "add COMPANY_EMAIL_HOST entry."
-                    ),
-                },
             )
 
         try:

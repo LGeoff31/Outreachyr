@@ -25,32 +25,22 @@ export default function HomePage() {
             </p>
             <div className="mt-10 flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:items-center">
               <Link
-                href="/dashboard"
+                href="/dashboard/new"
                 className={cn(
                   buttonVariants({ size: "lg" }),
                   "min-h-12 w-full justify-center gap-2 rounded-xl px-6 text-base font-semibold shadow-lg shadow-primary/15 sm:w-auto"
                 )}
               >
-                <LayoutDashboard
-                  aria-hidden
-                  className="size-5"
-                  data-icon="inline-start"
-                />
-                Open dashboard
+                Try it yourself
               </Link>
               <Link
-                href="/dashboard/new"
+                href="/dashboard"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
                   "min-h-12 w-full justify-center gap-2 rounded-xl px-6 text-base font-semibold sm:w-auto"
                 )}
               >
-                <PenLine
-                  aria-hidden
-                  className="size-5"
-                  data-icon="inline-start"
-                />
-                New campaign
+                Dashboard
               </Link>
             </div>
           </div>

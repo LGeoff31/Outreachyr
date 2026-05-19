@@ -18,4 +18,9 @@ def _first_from_email(addr: str) -> str:
 
 def domain_for_company(name: str) -> str | None:
     key = name.strip().lower()
-    return COMPANY_EMAIL_HOST.get(key)
+    if not key:
+        return None
+    mapped = COMPANY_EMAIL_HOST.get(key)
+    if mapped is not None:
+        return mapped
+    return f"{key}.com"

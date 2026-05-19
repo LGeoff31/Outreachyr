@@ -21,7 +21,7 @@ export function Header() {
         }
       >
         <Link
-          href={isDashboard ? "/dashboard" : "/"}
+          href="/"
           className="flex min-h-11 items-center gap-3 text-lg font-semibold tracking-tight text-foreground"
           aria-label="Outreachyr home"
         >
