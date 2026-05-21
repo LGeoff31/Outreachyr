@@ -49,7 +49,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage, readApiResponse, type ApiErrorBody } from "@/lib/apiError";
 import { fetchCompanyKeys } from "@/lib/api";
+import {
+  diagnoseGmailSendFailure,
+  syncGmailSendSession,
+} from "@/lib/gmailSession";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   createEmailTemplate,
@@ -71,14 +76,11 @@ type Recipient = {
   greeting_name?: string;
 };
 
-type SendResponse = {
-  ok?: boolean;
-  error?: string;
+type SendResponse = ApiErrorBody & {
   dry_run?: boolean;
   count?: number;
   recipients?: Recipient[];
   sent?: number;
-  auth_required?: boolean;
 };
 
 const defaultCompany = "Palantir";
@@ -128,6 +130,7 @@ export function OutreachForm() {
   const [message, setMessage] = useState(
     "Run a dry run to find recruiters and review every message before sending."
   );
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState<"preview" | "send" | null>(null);
   const [campaignLoading, setCampaignLoading] = useState(false);
@@ -144,6 +147,10 @@ export function OutreachForm() {
     fetchCompanyKeys()
       .then(setHints)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    void syncGmailSendSession();
   }, []);
 
   const applyLibraryResume = useCallback(async (row: UserResumeRow) => {
@@ -364,7 +371,12 @@ export function OutreachForm() {
 
       setLoading(dryRun ? "preview" : "send");
       setErr(false);
+      setErrorDetails(null);
       setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
+
+      if (!dryRun) {
+        await syncGmailSendSession();
+      }
 
       const fd = new FormData();
       fd.append("company", company.trim());
@@ -396,31 +408,52 @@ export function OutreachForm() {
           credentials: "include",
           headers: sendHeaders,
         });
-        const data = (await res.json()) as SendResponse;
+        const { data, text } = await readApiResponse(res);
+        const payload = data as SendResponse | null;
 
-        if (!data.ok) {
+        if (!payload?.ok) {
           setErr(true);
-          const authHint =
-            res.status === 401 || data.auth_required
-              ? " Sign in from the header or /login."
-              : "";
           setMessage(
-            (data.error ?? "The campaign could not be prepared.") + authHint
+            apiErrorMessage(
+              payload,
+              text,
+              "The campaign could not be prepared."
+            )
           );
+          if (res.status === 401 || payload?.auth_required) {
+            setErrorDetails(
+              await diagnoseGmailSendFailure({
+                sendStatus: res.status,
+                sendData: payload,
+                sendText: text,
+              })
+            );
+          } else {
+            setErrorDetails(
+              [
+                `HTTP ${res.status}`,
+                payload?.code ? `code=${payload.code}` : null,
+                payload?.detail ?? null,
+                !payload?.error && text ? text.slice(0, 180) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            );
+          }
           return;
         }
 
-        if (data.dry_run) {
-          const nextRecipients = data.recipients ?? [];
+        if (payload.dry_run) {
+          const nextRecipients = payload.recipients ?? [];
           setRecipients(nextRecipients);
           setReviewed(false);
           setMessage(
             nextRecipients.length === 0
               ? "Dry run finished, but no recipients were returned."
               : testMode
-                ? `Test mode: loaded ${data.count ?? nextRecipients.length} test address (cyz1@test.com). Review, then send to confirm Gmail delivery.`
+                ? `Test mode: loaded ${payload.count ?? nextRecipients.length} test address (cyz1@test.com). Review, then send to confirm Gmail delivery.`
                 : `Dry run found ${
-                    data.count ?? nextRecipients.length
+                    payload.count ?? nextRecipients.length
                   } recipient(s). Review each message before sending.`
           );
         } else {
@@ -428,14 +461,15 @@ export function OutreachForm() {
           setReviewed(false);
           setMessage(
             testMode
-              ? `Sent to ${data.sent ?? 0} test address. Confirm delivery in Gmail or at cyz1@test.com if you control that inbox.`
-              : `Sent to ${data.sent ?? 0} recipient(s).`
+              ? `Sent to ${payload.sent ?? 0} test address. Confirm delivery in Gmail or at cyz1@test.com if you control that inbox.`
+              : `Sent to ${payload.sent ?? 0} recipient(s).`
           );
         }
-      } catch {
+      } catch (e) {
         setErr(true);
-        setMessage(
-          "Could not reach the outreach server. Start the backend, then try the dry run again."
+        setMessage("Could not reach the outreach server.");
+        setErrorDetails(
+          e instanceof Error ? e.message : "Network error while calling /api/send"
         );
       } finally {
         setLoading(null);
@@ -922,6 +956,7 @@ export function OutreachForm() {
             loading={loading}
             err={err}
             message={message}
+            errorDetails={errorDetails}
             actionsLocked={campaignActionsLocked}
           />
         </div>
@@ -1042,6 +1077,7 @@ function ReviewPanel({
   loading,
   err,
   message,
+  errorDetails,
   actionsLocked = false,
 }: {
   recipients: Recipient[];
@@ -1051,6 +1087,7 @@ function ReviewPanel({
   loading: "preview" | "send" | null;
   err: boolean;
   message: string;
+  errorDetails: string | null;
   actionsLocked?: boolean;
 }) {
   return (
@@ -1141,6 +1178,11 @@ function ReviewPanel({
             className={cn(!err && "text-accent-foreground/80")}
           >
             {message}
+            {err && errorDetails ? (
+              <span className="mt-2 block font-mono text-xs leading-relaxed text-destructive/90">
+                {errorDetails}
+              </span>
+            ) : null}
           </AlertDescription>
         </Alert>
       </CardContent>

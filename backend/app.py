@@ -109,15 +109,34 @@ def _send_campaign(
 
     if google_oauth_configured():
         sid = request.cookies.get("outreach_session")
-        row = session_store.get(sid) if sid else None
+        if not sid:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "ok": False,
+                    "code": "gmail_session_missing",
+                    "error": (
+                        "Gmail send session cookie is missing. "
+                        "Sign out and sign in again to reconnect Gmail."
+                    ),
+                    "detail": "No outreach_session cookie was sent with the request.",
+                    "auth_required": True,
+                },
+            )
+        row = session_store.get(sid)
         if not row:
             return JSONResponse(
                 status_code=401,
                 content={
                     "ok": False,
+                    "code": "gmail_session_not_found",
                     "error": (
-                        "Sign in with Google so Outreachyr can send mail from "
-                        "your Gmail account."
+                        "Gmail send session expired or was not found on the server."
+                    ),
+                    "detail": (
+                        "The outreach_session cookie was present but the backend "
+                        "could not load it. On production this usually means "
+                        "sessions are not persisted between deploys."
                     ),
                     "auth_required": True,
                 },
@@ -140,7 +159,9 @@ def _send_campaign(
                 status_code=401,
                 content={
                     "ok": False,
+                    "code": "google_refresh_revoked",
                     "error": f"Google login expired or revoked: {e}",
+                    "detail": "Reconnect Gmail by signing out and signing in again.",
                     "auth_required": True,
                 },
             )
@@ -178,6 +199,7 @@ def _send_campaign(
         status_code=503,
         content={
             "ok": False,
+            "code": "google_backend_config",
             "error": (
                 "Server is not configured for Google sign-in. "
                 "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the backend .env."
@@ -324,16 +346,30 @@ def auth_google_session(body: GoogleSessionRequest):
         )
 
     session_id = secrets.token_urlsafe(32)
-    session_store.upsert(
-        session_id,
-        {
-            "refresh_token": body.provider_refresh_token.strip(),
-            "email": user["email"],
-            "supabase_user_id": user["id"],
-        },
-    )
+    try:
+        session_store.upsert(
+            session_id,
+            {
+                "refresh_token": body.provider_refresh_token.strip(),
+                "email": user["email"],
+                "supabase_user_id": user["id"],
+            },
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "code": "gmail_session_store_failed",
+                "error": f"Could not store Gmail session: {e}",
+                "detail": (
+                    "The backend could not persist your Gmail credentials. "
+                    "Check DATABASE_URL and run migrations on production."
+                ),
+            },
+        )
 
-    response = JSONResponse({"ok": True})
+    response = JSONResponse({"ok": True, "session_id": session_id})
     response.set_cookie(
         key="outreach_session",
         value=session_id,
