@@ -20,9 +20,22 @@ export type GmailAuthStatus = {
   error?: string;
 };
 
+async function gmailApiHeaders(): Promise<Record<string, string>> {
+  if (!isSupabaseConfigured()) return {};
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) return {};
+  return { Authorization: `Bearer ${session.access_token}` };
+}
+
 export async function fetchGmailAuthStatus(): Promise<GmailAuthStatus> {
   try {
-    const res = await fetch("/api/auth/me", { credentials: "include" });
+    const res = await fetch("/api/auth/me", {
+      credentials: "include",
+      headers: await gmailApiHeaders(),
+    });
     const { data, text } = await readApiResponse(res);
     if (!res.ok) {
       return {
@@ -91,7 +104,10 @@ export async function syncGmailSendSession(): Promise<GmailSessionSyncResult> {
     const res = await fetch("/api/auth/google/session", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(await gmailApiHeaders()),
+      },
       body: JSON.stringify({
         access_token: session.access_token,
         provider_refresh_token: session.provider_refresh_token,

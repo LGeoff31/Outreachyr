@@ -2,13 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { serverBackendBaseUrl } from "@/lib/backendApi";
 import { getSupabaseEnv } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-function backendBaseUrl() {
-  return process.env.OUTREACH_API_URL ?? "http://127.0.0.1:5050";
-}
 
 function safeNext(searchParams: URLSearchParams) {
   const next = searchParams.get("next") ?? "/dashboard";
@@ -18,18 +15,23 @@ function safeNext(searchParams: URLSearchParams) {
 async function syncGmailSession({
   accessToken,
   providerRefreshToken,
+  requestOrigin,
 }: {
   accessToken: string;
   providerRefreshToken: string;
+  requestOrigin: string;
 }) {
-  const response = await fetch(`${backendBaseUrl()}/api/auth/google/session`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      access_token: accessToken,
-      provider_refresh_token: providerRefreshToken,
-    }),
-  });
+  const response = await fetch(
+    `${serverBackendBaseUrl(requestOrigin)}/api/auth/google/session`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        access_token: accessToken,
+        provider_refresh_token: providerRefreshToken,
+      }),
+    }
+  );
   const data = (await response.json().catch(() => null)) as {
     code?: string;
   } | null;
@@ -101,6 +103,7 @@ export async function GET(request: Request) {
   const sync = await syncGmailSession({
     accessToken: data.session.access_token,
     providerRefreshToken,
+    requestOrigin: requestUrl.origin,
   });
 
   if (!sync.ok) {
