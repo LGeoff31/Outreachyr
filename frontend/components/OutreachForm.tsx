@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  Eye,
   FileText,
   Loader2,
-  RefreshCcw,
+  Lock,
+  Search,
   SendHorizontal,
   Upload,
   UsersRound,
@@ -33,6 +35,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
+  EmptyContent,
 } from "@/components/ui/empty";
 import {
   Field,
@@ -62,6 +65,7 @@ import {
 import {
   fetchUserResumeRows,
   resumeApiAuthHeaders,
+  uploadUserResumePdf,
   type UserResumeRow,
 } from "@/lib/supabase/userResumes";
 
@@ -112,14 +116,19 @@ export function OutreachForm() {
   const [selectedSavedTemplateId, setSelectedSavedTemplateId] = useState<
     string | null
   >(null);
-  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
-  const [saveTemplateName, setSaveTemplateName] = useState("");
   const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
+  const [saveTemplateSaved, setSaveTemplateSaved] = useState(false);
   const [saveTemplateErr, setSaveTemplateErr] = useState<string | null>(null);
+  const [saveResumeSaving, setSaveResumeSaving] = useState(false);
+  const [saveResumeSaved, setSaveResumeSaved] = useState(false);
+  const [saveResumeErr, setSaveResumeErr] = useState<string | null>(null);
   const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState("");
+  const [sendSuccess, setSendSuccess] = useState(false);
+  const [celebrateSend, setCelebrateSend] = useState(0);
+  const sendButtonWrapRef = useRef<HTMLSpanElement>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState<"preview" | "send" | null>(null);
@@ -132,6 +141,7 @@ export function OutreachForm() {
   const [pendingCampaignResumePath, setPendingCampaignResumePath] = useState<
     string | null
   >(null);
+  const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCompanyKeys()
@@ -142,6 +152,61 @@ export function OutreachForm() {
   useEffect(() => {
     void syncGmailSendSession();
   }, []);
+
+  useEffect(() => {
+    if (celebrateSend === 0) return;
+    let cancelled = false;
+    const run = async () => {
+      const { default: confetti } = await import("canvas-confetti");
+      if (cancelled) return;
+      const rect = sendButtonWrapRef.current?.getBoundingClientRect();
+      const origin = {
+        x: rect
+          ? (rect.left + rect.width / 2) / window.innerWidth
+          : 0.85,
+        y: rect
+          ? (rect.top + rect.height / 2) / window.innerHeight
+          : 0.92,
+      };
+      const base = {
+        origin,
+        zIndex: 80,
+        disableForReducedMotion: true,
+      } as const;
+      confetti({
+        ...base,
+        particleCount: 100,
+        spread: 70,
+        startVelocity: 40,
+        colors: ["#3b82f6", "#6366f1", "#22c55e", "#f59e0b", "#f1f5f9"],
+      });
+      await new Promise((r) => setTimeout(r, 160));
+      if (cancelled) return;
+      confetti({
+        ...base,
+        particleCount: 60,
+        spread: 95,
+        startVelocity: 30,
+        scalar: 0.85,
+        ticks: 240,
+        colors: ["#60a5fa", "#a78bfa", "#4ade80", "#fde047"],
+      });
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [celebrateSend]);
+
+  useEffect(() => {
+    if (!file) {
+      setResumePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setResumePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const applyLibraryResume = useCallback(async (row: UserResumeRow) => {
     setLibraryAttachLoading(true);
@@ -328,7 +393,83 @@ export function OutreachForm() {
     reviewed &&
     loading === null &&
     !campaignActionsLocked;
+  const reviewRequired =
+    recipients.length > 0 && !reviewed && !campaignActionsLocked;
+  const sendBlockedReason =
+    canSend || loading === "send"
+      ? undefined
+      : campaignActionsLocked
+        ? "This campaign was already sent."
+        : loading === "preview"
+          ? "Wait for recruiter search to finish."
+          : recipients.length === 0
+            ? "Fetch recruiters and review messages first."
+            : !reviewed
+              ? "Reviewed all messages not checked."
+              : undefined;
   const companyInvalid = err && !companyReady;
+
+  const saveAsTemplate = useCallback(async () => {
+    if (!subject.trim() || !bodyText.trim()) {
+      setSaveTemplateErr("Add a subject and message first.");
+      setSaveTemplateSaved(false);
+      return;
+    }
+
+    setSaveTemplateSaving(true);
+    setSaveTemplateErr(null);
+    setSaveTemplateSaved(false);
+
+    const name = subject.trim().slice(0, 80) || "My template";
+    const { row, error } = await createEmailTemplate({
+      name,
+      subject: subject.trim(),
+      body_text: bodyText,
+    });
+
+    setSaveTemplateSaving(false);
+
+    if (error || !row) {
+      setSaveTemplateErr(error?.message ?? "Could not save template.");
+      return;
+    }
+
+    setSavedTemplates((current) => [row, ...current]);
+    setSelectedSavedTemplateId(row.id);
+    setSaveTemplateSaved(true);
+    window.setTimeout(() => setSaveTemplateSaved(false), 2000);
+  }, [bodyText, subject]);
+
+  const saveAsResume = useCallback(async () => {
+    if (!file) {
+      setSaveResumeErr("Upload a resume first.");
+      setSaveResumeSaved(false);
+      return;
+    }
+    if (selectedSavedResumeId) {
+      setSaveResumeSaved(true);
+      window.setTimeout(() => setSaveResumeSaved(false), 2000);
+      return;
+    }
+
+    setSaveResumeSaving(true);
+    setSaveResumeErr(null);
+    setSaveResumeSaved(false);
+
+    const { row, error } = await uploadUserResumePdf(file);
+
+    setSaveResumeSaving(false);
+
+    if (error || !row) {
+      setSaveResumeErr(error?.message ?? "Could not save resume.");
+      return;
+    }
+
+    setSavedResumes((current) => [row, ...current]);
+    setSelectedSavedResumeId(row.id);
+    setSaveResumeSaved(true);
+    window.setTimeout(() => setSaveResumeSaved(false), 2000);
+  }, [file, selectedSavedResumeId]);
 
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
@@ -354,6 +495,7 @@ export function OutreachForm() {
 
       setLoading(dryRun ? "preview" : "send");
       setErr(false);
+      setSendSuccess(false);
       setErrorDetails(null);
       setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
 
@@ -430,6 +572,7 @@ export function OutreachForm() {
           const nextRecipients = payload.recipients ?? [];
           setRecipients(nextRecipients);
           setReviewed(false);
+          setSendSuccess(false);
           setMessage(
             nextRecipients.length === 0
               ? "No recipients found."
@@ -440,10 +583,12 @@ export function OutreachForm() {
         } else {
           setRecipients([]);
           setReviewed(false);
+          setSendSuccess(true);
+          setCelebrateSend((n) => n + 1);
           setMessage(
             testMode
-              ? `Sent to ${payload.sent ?? 0} test address.`
-              : `Sent to ${payload.sent ?? 0} recipient(s).`
+              ? `Sent to ${payload.sent ?? 0} test address. Check your sent folder to confirm delivery.`
+              : `Sent to ${payload.sent ?? 0} recipient(s). Check your inbox for replies.`
           );
         }
       } catch (e) {
@@ -687,8 +832,14 @@ export function OutreachForm() {
                     className="mt-2 rounded-xl text-sm leading-relaxed"
                   />
                   <p className="mt-2 text-xs text-muted-foreground">
-                    First name and company will be auto-populated for each
-                    recipient when sent.
+                    <code className="font-mono text-[0.7rem] text-foreground/80">
+                      {"{{first_name}}"}
+                    </code>{" "}
+                    and{" "}
+                    <code className="font-mono text-[0.7rem] text-foreground/80">
+                      {"{{company}}"}
+                    </code>{" "}
+                    are auto-populated for each recipient when sent.
                   </p>
                 </Field>
                 {isSupabaseConfigured() ? (
@@ -697,85 +848,35 @@ export function OutreachForm() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 rounded-lg px-2 text-xs text-muted-foreground"
-                      onClick={() => {
-                        setSaveTemplateErr(null);
-                        setSaveTemplateOpen((open) => {
-                          const next = !open;
-                          if (next) {
-                            const fromSubject = subject.trim().slice(0, 80);
-                            setSaveTemplateName(
-                              fromSubject || "My template"
-                            );
-                          }
-                          return next;
-                        });
-                      }}
-                    >
-                      {saveTemplateOpen ? "Cancel" : "Save as template"}
-                    </Button>
-                  </div>
-                ) : null}
-                {saveTemplateOpen ? (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <Field className="min-w-0 flex-1">
-                      <Input
-                        id="save-template-name"
-                        value={saveTemplateName}
-                        onChange={(e) => setSaveTemplateName(e.target.value)}
-                        placeholder="Template name"
-                        className="h-9 rounded-xl text-sm"
-                        aria-label="Template name"
-                      />
-                    </Field>
-                    <Button
-                      type="button"
-                      className="h-9 shrink-0 rounded-xl sm:w-auto"
-                      disabled={
-                        saveTemplateSaving ||
-                        !subject.trim() ||
-                        !bodyText.trim()
-                      }
-                      onClick={() => void (async () => {
-                        const name = saveTemplateName.trim();
-                        if (!name) {
-                          setSaveTemplateErr("Enter a template name.");
-                          return;
-                        }
-                        setSaveTemplateSaving(true);
-                        setSaveTemplateErr(null);
-                        const { row, error } = await createEmailTemplate({
-                          name,
-                          subject: subject.trim(),
-                          body_text: bodyText,
-                        });
-                        setSaveTemplateSaving(false);
-                        if (error || !row) {
-                          setSaveTemplateErr(
-                            error?.message ?? "Could not save template."
-                          );
-                          return;
-                        }
-                        setSavedTemplates((current) => [row, ...current]);
-                        setSelectedSavedTemplateId(row.id);
-                        setSaveTemplateOpen(false);
-                      })()}
+                      disabled={saveTemplateSaving}
+                      className={cn(
+                        "h-8 rounded-lg px-2 text-xs",
+                        saveTemplateSaved
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      )}
+                      onClick={() => void saveAsTemplate()}
                     >
                       {saveTemplateSaving ? (
                         <>
-                          <Loader2 className="size-4 animate-spin" />
+                          <Loader2 className="size-3.5 animate-spin" />
                           Saving…
                         </>
+                      ) : saveTemplateSaved ? (
+                        <>
+                          <CheckCircle2 className="size-3.5" />
+                          Saved
+                        </>
                       ) : (
-                        "Save"
+                        "Save as template"
                       )}
                     </Button>
+                    {saveTemplateErr ? (
+                      <p className="mt-1 text-xs text-destructive" role="alert">
+                        {saveTemplateErr}
+                      </p>
+                    ) : null}
                   </div>
-                ) : null}
-                {saveTemplateErr ? (
-                  <p className="mt-2 text-xs text-destructive" role="alert">
-                    {saveTemplateErr}
-                  </p>
                 ) : null}
               </div>
 
@@ -791,7 +892,7 @@ export function OutreachForm() {
                       href="/dashboard/resumes"
                       className="text-xs font-medium text-primary underline-offset-4 hover:underline"
                     >
-                      Manage
+                      Create in Resumes
                     </Link>
                   ) : null}
                 </div>
@@ -815,9 +916,7 @@ export function OutreachForm() {
                     className="mt-2 h-9 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     <option value="">
-                      {savedResumesLoading
-                        ? "Loading…"
-                        : "From library…"}
+                      {savedResumesLoading ? "Loading…" : "None"}
                     </option>
                     {savedResumes.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -895,6 +994,42 @@ export function OutreachForm() {
                     </label>
                   )}
                 </Field>
+                {isSupabaseConfigured() && file ? (
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={saveResumeSaving}
+                      className={cn(
+                        "h-8 rounded-lg px-2 text-xs",
+                        saveResumeSaved
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      )}
+                      onClick={() => void saveAsResume()}
+                    >
+                      {saveResumeSaving ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Saving…
+                        </>
+                      ) : saveResumeSaved ? (
+                        <>
+                          <CheckCircle2 className="size-3.5" />
+                          Saved
+                        </>
+                      ) : (
+                        "Save as resume"
+                      )}
+                    </Button>
+                    {saveResumeErr ? (
+                      <p className="mt-1 text-xs text-destructive" role="alert">
+                        {saveResumeErr}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -904,11 +1039,14 @@ export function OutreachForm() {
             bodyText={bodyText}
             company={company}
             subject={subject}
+            resumeFileName={file?.name ?? null}
+            resumePreviewUrl={resumePreviewUrl}
             testMode={testMode}
             loading={loading}
             err={err}
             message={message}
             errorDetails={errorDetails}
+            sendSuccess={sendSuccess}
             actionsLocked={campaignActionsLocked}
           />
         </div>
@@ -919,25 +1057,14 @@ export function OutreachForm() {
         className="border-t border-border bg-background/95 backdrop-blur-xl lg:fixed lg:bottom-0 lg:left-56 lg:right-0 lg:z-30"
       >
         <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-3 px-5 py-3 sm:px-8 lg:min-h-16 lg:flex-row lg:items-center lg:justify-between lg:px-10 lg:py-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button
-              type="submit"
-              variant="outline"
-              size="lg"
-              disabled={loading !== null || campaignActionsLocked}
-              className="min-h-10 rounded-xl px-6"
-            >
-              {loading === "preview" && (
-                <Loader2
-                  data-icon="inline-start"
-                  aria-hidden="true"
-                  className="animate-spin"
-                />
-              )}
-              Fetch recruiters
-            </Button>
-            {recipients.length > 0 ? (
-              <p className="text-sm text-muted-foreground">
+          <div className="flex shrink-0 items-center">
+            {loading === "preview" ? (
+              <p className="flex items-center gap-2 whitespace-nowrap text-sm text-muted-foreground">
+                <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                Finding recruiters…
+              </p>
+            ) : recipients.length > 0 ? (
+              <p className="whitespace-nowrap text-sm text-muted-foreground">
                 {recipients.length} found
               </p>
             ) : null}
@@ -957,30 +1084,55 @@ export function OutreachForm() {
               disabled={recipients.length === 0 || campaignActionsLocked}
             />
             <FieldContent>
-              <FieldLabel htmlFor="reviewed">
+              <FieldLabel htmlFor="reviewed" className="flex items-center gap-1.5">
                 Reviewed all messages
+                {reviewRequired ? (
+                  <Lock
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                ) : null}
               </FieldLabel>
             </FieldContent>
           </Field>
 
-          <Button
-            type="button"
-            disabled={!canSend}
-            onClick={() => void runCampaign(false)}
-            size="lg"
-            className="min-h-10 rounded-xl px-8"
-          >
-            {loading === "send" ? (
-              <Loader2
-                data-icon="inline-start"
-                aria-hidden="true"
-                className="animate-spin"
-              />
-            ) : (
-              <SendHorizontal data-icon="inline-start" aria-hidden="true" />
+          <span
+            ref={sendButtonWrapRef}
+            className={cn(
+              "group relative inline-flex",
+              !canSend && loading !== "send" && "cursor-not-allowed"
             )}
-            {loading === "send" ? "Sending..." : "Send campaign"}
-          </Button>
+          >
+            {sendBlockedReason ? (
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute bottom-[calc(100%+0.5rem)] left-1/2 z-50 w-max max-w-[16rem] -translate-x-1/2 rounded-lg bg-foreground px-2.5 py-1.5 text-center text-xs font-medium leading-snug text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+              >
+                {sendBlockedReason}
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              disabled={!canSend}
+              onClick={() => void runCampaign(false)}
+              size="lg"
+              className={cn(
+                "min-h-10 rounded-xl px-8",
+                !canSend && loading !== "send" && "pointer-events-none"
+              )}
+            >
+              {loading === "send" ? (
+                <Loader2
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                  className="animate-spin"
+                />
+              ) : (
+                <SendHorizontal data-icon="inline-start" aria-hidden="true" />
+              )}
+              {loading === "send" ? "Sending..." : "Send campaign"}
+            </Button>
+          </span>
         </div>
       </div>
     </form>
@@ -992,25 +1144,43 @@ function ReviewPanel({
   bodyText,
   company,
   subject,
+  resumeFileName,
+  resumePreviewUrl,
   testMode,
   loading,
   err,
   message,
   errorDetails,
+  sendSuccess = false,
   actionsLocked = false,
 }: {
   recipients: Recipient[];
   bodyText: string;
   company: string;
   subject: string;
+  resumeFileName: string | null;
+  resumePreviewUrl: string | null;
   testMode: boolean;
   loading: "preview" | "send" | null;
   err: boolean;
   message: string;
   errorDetails: string | null;
+  sendSuccess?: boolean;
   actionsLocked?: boolean;
 }) {
+  const [fullPreview, setFullPreview] = useState<Recipient | null>(null);
+
+  useEffect(() => {
+    if (!fullPreview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullPreview(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullPreview]);
+
   return (
+    <>
     <Card size="sm" className="min-w-0 overflow-hidden rounded-2xl bg-card shadow-sm">
       <CardHeader className="border-b border-border px-5 py-4">
         <CardTitle className="text-base font-semibold">
@@ -1029,10 +1199,10 @@ function ReviewPanel({
         <CardAction>
           <Button
             type="submit"
-            variant="ghost"
+            variant="secondary"
             size="sm"
             disabled={loading !== null || actionsLocked}
-            className="text-primary"
+            className="min-h-9 gap-2 rounded-xl"
           >
             {loading === "preview" ? (
               <Loader2
@@ -1041,9 +1211,9 @@ function ReviewPanel({
                 className="animate-spin"
               />
             ) : (
-              <RefreshCcw data-icon="inline-start" aria-hidden="true" />
+              <Search data-icon="inline-start" aria-hidden="true" />
             )}
-            Refresh
+            Fetch recruiters
           </Button>
         </CardAction>
       </CardHeader>
@@ -1057,9 +1227,26 @@ function ReviewPanel({
                 </EmptyMedia>
                 <EmptyTitle>No recipients yet</EmptyTitle>
                 <EmptyDescription>
-                  Fetch recruiters to preview outgoing mail.
+                  Find recruiters for your target company, then preview each
+                  email here.
                 </EmptyDescription>
               </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  size="sm"
+                  disabled={loading !== null || actionsLocked}
+                  className="min-h-10 gap-2 rounded-xl"
+                >
+                  {loading === "preview" ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Search className="size-4" aria-hidden />
+                  )}
+                  Fetch recruiters
+                </Button>
+              </EmptyContent>
             </Empty>
           ) : (
             <div className="flex flex-col gap-2.5">
@@ -1070,6 +1257,7 @@ function ReviewPanel({
                   bodyText={bodyText}
                   company={company}
                   subject={subject}
+                  onViewFull={() => setFullPreview(recipient)}
                 />
               ))}
             </div>
@@ -1082,14 +1270,20 @@ function ReviewPanel({
             variant={err ? "destructive" : "default"}
             className={cn(
               "mx-5 mb-5 rounded-xl",
-              !err && "border-primary/20 bg-accent text-accent-foreground"
+              err && "destructive",
+              !err && sendSuccess && "border-primary/30 bg-primary/10 text-foreground",
+              !err && !sendSuccess && "border-primary/20 bg-accent text-accent-foreground"
             )}
           >
             {err ? (
               <AlertCircle aria-hidden="true" />
+            ) : sendSuccess ? (
+              <CheckCircle2 aria-hidden="true" />
             ) : null}
             {err ? (
               <AlertTitle>Error</AlertTitle>
+            ) : sendSuccess ? (
+              <AlertTitle>Campaign sent</AlertTitle>
             ) : null}
             <AlertDescription
               className={cn(!err && "text-accent-foreground/80")}
@@ -1105,6 +1299,19 @@ function ReviewPanel({
         ) : null}
       </CardContent>
     </Card>
+
+    {fullPreview ? (
+      <EmailFullPreview
+        recipient={fullPreview}
+        subject={subject}
+        bodyText={bodyText}
+        company={company}
+        resumeFileName={resumeFileName}
+        resumePreviewUrl={resumePreviewUrl}
+        onClose={() => setFullPreview(null)}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -1113,14 +1320,17 @@ function RecipientReview({
   bodyText,
   company,
   subject,
+  onViewFull,
 }: {
   recipient: Recipient;
   bodyText: string;
   company: string;
   subject: string;
+  onViewFull: () => void;
 }) {
   const name = recipient.greeting_name || recipientNameFromEmail(recipient.email);
-  const snippet = previewSnippet(bodyText, name, company);
+  const mergedSubject = resolveMergeFields(subject, name, company);
+  const snippet = resolveMergeFields(bodyText, name, company, defaultMessage);
 
   return (
     <article className="rounded-xl border border-border bg-muted/25 px-3 py-3">
@@ -1138,14 +1348,144 @@ function RecipientReview({
             ) : null}
           </p>
           <p className="mt-1 line-clamp-1 text-xs font-semibold text-foreground">
-            {subject}
+            {mergedSubject}
           </p>
           <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
             {snippet}
           </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
+          onClick={onViewFull}
+        >
+          <Eye className="size-3.5" aria-hidden />
+          View full
+        </Button>
       </div>
     </article>
+  );
+}
+
+function EmailFullPreview({
+  recipient,
+  subject,
+  bodyText,
+  company,
+  resumeFileName,
+  resumePreviewUrl,
+  onClose,
+}: {
+  recipient: Recipient;
+  subject: string;
+  bodyText: string;
+  company: string;
+  resumeFileName: string | null;
+  resumePreviewUrl: string | null;
+  onClose: () => void;
+}) {
+  const name = recipient.greeting_name || recipientNameFromEmail(recipient.email);
+  const mergedSubject = resolveMergeFields(subject, name, company);
+  const mergedBody = resolveMergeFields(bodyText, name, company, defaultMessage);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close email preview"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="email-preview-title"
+        className={cn(
+          "relative z-10 flex w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl",
+          resumePreviewUrl
+            ? "max-h-[min(44rem,calc(100vh-2rem))] max-w-2xl"
+            : "max-h-[min(32rem,calc(100vh-2rem))] max-w-lg"
+        )}
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <p
+            id="email-preview-title"
+            className="text-sm font-semibold text-foreground"
+          >
+            Email preview
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-background px-4 py-4">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  To
+                </dt>
+                <dd className="mt-0.5 font-medium text-foreground">
+                  {name || "Recruiter"}
+                  {recipient.email ? (
+                    <span className="block truncate text-xs font-normal text-muted-foreground">
+                      {recipient.email}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Subject
+                </dt>
+                <dd className="mt-0.5 font-semibold text-foreground">
+                  {mergedSubject}
+                </dd>
+              </div>
+            </dl>
+
+            <Separator className="my-4" />
+
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+              {mergedBody}
+            </div>
+
+            {resumeFileName ? (
+              <div className="mt-4">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Attachment
+                </p>
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs">
+                  <FileText
+                    className="size-4 shrink-0 text-primary"
+                    aria-hidden
+                  />
+                  <span className="truncate font-medium text-foreground">
+                    {resumeFileName}
+                  </span>
+                </div>
+                {resumePreviewUrl ? (
+                  <iframe
+                    title={`Resume preview: ${resumeFileName}`}
+                    src={resumePreviewUrl}
+                    className="mt-3 h-56 w-full rounded-lg border border-border bg-muted/20 sm:h-64"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1163,10 +1503,16 @@ function recipientNameFromEmail(email?: string) {
     .join(" ");
 }
 
-function previewSnippet(bodyText: string, name: string, company: string) {
-  return (bodyText.trim() || defaultMessage)
+function resolveMergeFields(
+  text: string,
+  name: string,
+  company: string,
+  fallback = ""
+) {
+  const source = text.trim() || fallback;
+  return source
     .replaceAll("{{first_name}}", name || "there")
     .replaceAll("__FIRST_NAME__", name || "there")
-    .replaceAll("{{company}}", company || "the company")
+    .replaceAll("{{company}}", company.trim() || "the company")
     .replaceAll("{{role}}", "recruiting");
 }
