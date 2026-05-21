@@ -12,7 +12,7 @@ export function Header() {
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 
   return (
-    <header className="sticky top-0 z-50 w-screen max-w-full overflow-hidden border-b border-border/80 bg-background/90 backdrop-blur-xl">
+    <header className="fixed inset-x-0 top-0 z-50 w-full overflow-hidden border-b border-border/80 bg-background/90 backdrop-blur-xl">
       <div
         className={
           isDashboard

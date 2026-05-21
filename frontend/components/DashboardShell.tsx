@@ -153,7 +153,7 @@ export function DashboardShell({
         </aside>
 
         <div className="min-w-0 lg:col-start-2">
-          <div className="flex items-center gap-3 border-b border-border px-5 py-4 sm:px-8 lg:hidden">
+          <div className="sticky top-16 z-30 flex items-center gap-3 border-b border-border bg-background/95 px-5 py-4 backdrop-blur-sm sm:px-8 lg:hidden">
             <Link
               href="/dashboard/new"
               className={cn(buttonVariants(), "min-h-11 rounded-xl px-4")}

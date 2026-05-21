@@ -1,15 +1,12 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ChevronDown,
   FileText,
   Loader2,
   Pencil,
   Plus,
   Search,
-  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 
@@ -25,7 +22,6 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   createEmailTemplate,
@@ -57,7 +53,6 @@ export function TemplatesView() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState("Last updated");
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [formSubject, setFormSubject] = useState("");
   const [formBody, setFormBody] = useState("");
@@ -121,11 +116,10 @@ export function TemplatesView() {
       const blob = `${r.subject} ${r.body_text}`.toLowerCase();
       return blob.includes(normalizedQuery);
     });
-    return [...filtered].sort((a, b) => {
-      if (sortBy === "Subject") return a.subject.localeCompare(b.subject);
-      return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-    });
-  }, [query, rows, sortBy]);
+    return [...filtered].sort(
+      (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)
+    );
+  }, [query, rows]);
 
   const openCreate = () => {
     setActionError(null);
@@ -250,8 +244,8 @@ export function TemplatesView() {
           </Alert>
         ) : null}
 
-        <section className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,14rem)]">
-          <label className="relative block min-w-0">
+        <section>
+          <label className="relative block min-w-0 max-w-[30rem]">
             <span className="sr-only">Search templates</span>
             <Search
               aria-hidden="true"
@@ -265,14 +259,6 @@ export function TemplatesView() {
               disabled={!supabaseReady}
             />
           </label>
-          <FilterSelect
-            label="Sort by"
-            value={sortBy}
-            onChange={setSortBy}
-            options={["Last updated", "Subject"]}
-            icon={<SlidersHorizontal aria-hidden="true" className="size-4" />}
-            disabled={!supabaseReady}
-          />
         </section>
 
         {listLoading ? (
@@ -437,44 +423,5 @@ export function TemplatesView() {
         </div>
       ) : null}
     </main>
-  );
-}
-
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-  icon,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  icon?: ReactNode;
-  disabled?: boolean;
-}) {
-  return (
-    <label className={cn("relative block", disabled && "opacity-60")}>
-      <span className="absolute left-3 top-1 text-[0.7rem] font-medium leading-none text-muted-foreground">
-        {label}
-      </span>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 pb-1.5 pt-4 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-        {icon ?? <ChevronDown aria-hidden="true" className="size-4" />}
-      </span>
-    </label>
   );
 }

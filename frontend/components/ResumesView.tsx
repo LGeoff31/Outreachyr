@@ -332,8 +332,8 @@ export function ResumesView({
           </div>
         </div>
 
-        <section className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_minmax(12rem,14rem)]">
-          <label className="relative block min-w-0">
+        <section>
+          <label className="relative block min-w-0 max-w-[30rem]">
             <span className="sr-only">Search resumes</span>
             <Search
               aria-hidden="true"
