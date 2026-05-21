@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
   FileText,
-  HelpCircle,
   LogOut,
   Mail,
   Plus,
@@ -16,6 +15,7 @@ import {
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { buttonVariants } from "@/components/ui/button";
+import { SendFeedbackButton } from "@/components/SendFeedbackButton";
 import { Separator } from "@/components/ui/separator";
 import { signOutEverywhere } from "@/lib/auth";
 import {
@@ -128,6 +128,7 @@ export function DashboardShell({
             <Separator className="mb-4" />
             <DashboardAccountSummary />
             <div className="flex flex-col gap-1">
+              <SendFeedbackButton />
               {utilityNav.map((item) => (
                 <button
                   key={item.label}

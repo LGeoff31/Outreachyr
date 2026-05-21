@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Send } from "lucide-react";
 
 import { HeaderAuth } from "@/components/HeaderAuth";
+import { SendFeedbackButton } from "@/components/SendFeedbackButton";
 
 export function Header() {
   const pathname = usePathname();
@@ -16,7 +17,7 @@ export function Header() {
       <div
         className={
           isDashboard
-            ? "flex h-16 w-full items-center px-5"
+            ? "flex h-16 w-full items-center justify-between px-5"
             : "mx-auto flex h-16 w-full max-w-[90rem] items-center justify-between px-5 sm:px-8"
         }
       >
@@ -30,7 +31,11 @@ export function Header() {
           </span>
           Outreachyr.
         </Link>
-        {!isDashboard ? <HeaderAuth /> : null}
+        {isDashboard ? (
+          <SendFeedbackButton variant="header" />
+        ) : (
+          <HeaderAuth />
+        )}
       </div>
     </header>
   );

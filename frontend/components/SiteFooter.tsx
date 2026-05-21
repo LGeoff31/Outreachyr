@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SendFeedbackButton } from "@/components/SendFeedbackButton";
+
 export function SiteFooter() {
   const pathname = usePathname();
   const isDashboard =
@@ -38,6 +40,7 @@ export function SiteFooter() {
           >
             Terms of Service
           </Link>
+          <SendFeedbackButton variant="link" />
         </nav>
       </div>
     </footer>
