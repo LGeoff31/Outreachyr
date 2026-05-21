@@ -281,6 +281,10 @@ export function LandingCampaignDemo() {
           await sleep(500);
           if (cancelled) return;
         }
+        setFocusRecipient(DEMO_RECIPIENTS.length - 1);
+        await sleep(600);
+        if (cancelled) return;
+        setFocusRecipient(null);
         setSending(true);
         await sleep(600);
         if (cancelled) return;
@@ -359,6 +363,13 @@ export function LandingCampaignDemo() {
         await sleep(1000);
         if (cancelled) return;
       }
+
+      const lastIdx = DEMO_RECIPIENTS.length - 1;
+      await moveCursorTo(emailCardRefs.current[lastIdx]);
+      setFocusRecipient(lastIdx);
+      await sleep(520);
+      if (cancelled) return;
+      setFocusRecipient(null);
 
       await moveCursorTo(sendWrapRef.current);
       setSending(true);

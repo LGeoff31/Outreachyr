@@ -2,18 +2,14 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
-  ChevronDown,
-  Eye,
   FileText,
   Loader2,
-  LockKeyhole,
   RefreshCcw,
   SendHorizontal,
-  ShieldCheck,
   Upload,
   UsersRound,
   X,
@@ -27,7 +23,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -42,12 +37,11 @@ import {
 import {
   Field,
   FieldContent,
-  FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { AutosizeTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { apiErrorMessage, readApiResponse, type ApiErrorBody } from "@/lib/apiError";
 import { fetchCompanyKeys } from "@/lib/api";
@@ -92,8 +86,6 @@ I'm a CS student interested in building impactful software at {{company}}.
 
 I'm reaching out to learn more about opportunities for Fall 2026.`;
 
-const mergeFields = ["{{first_name}}", "{{company}}", "{{role}}"];
-
 export function OutreachForm() {
   const searchParams = useSearchParams();
   const campaignFromUrl = searchParams.get("campaign")?.trim() || null;
@@ -127,9 +119,7 @@ export function OutreachForm() {
   const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [reviewed, setReviewed] = useState(false);
-  const [message, setMessage] = useState(
-    "Run a dry run to find recruiters and review every message before sending."
-  );
+  const [message, setMessage] = useState("");
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState<"preview" | "send" | null>(null);
@@ -246,9 +236,7 @@ export function OutreachForm() {
       setReviewed(false);
       setTestMode(false);
       setErr(false);
-      setMessage(
-        "Run a dry run to find recruiters and review every message before sending."
-      );
+      setMessage("");
       setFile(null);
       setSelectedSavedResumeId(null);
       setSelectedSavedTemplateId(null);
@@ -293,8 +281,8 @@ export function OutreachForm() {
       setErr(false);
       setMessage(
         sent
-          ? "This campaign was already sent. Review the copy and recipients below; dry run and send are disabled."
-          : "Campaign loaded. Run a dry run to refresh recipients, then send when ready."
+          ? "This campaign was already sent."
+          : "Campaign loaded."
       );
       const path = data.resume_storage_path?.trim();
       if (path) {
@@ -341,11 +329,6 @@ export function OutreachForm() {
     loading === null &&
     !campaignActionsLocked;
   const companyInvalid = err && !companyReady;
-
-  const appendMergeField = useCallback((token: string) => {
-    setSelectedSavedTemplateId(null);
-    setBodyText((current) => `${current}${current.endsWith("\n") ? "" : " "}${token}`);
-  }, []);
 
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
@@ -449,19 +432,17 @@ export function OutreachForm() {
           setReviewed(false);
           setMessage(
             nextRecipients.length === 0
-              ? "Dry run finished, but no recipients were returned."
+              ? "No recipients found."
               : testMode
-                ? `Test mode: loaded ${payload.count ?? nextRecipients.length} test address (cyz1@test.com). Review, then send to confirm Gmail delivery.`
-                : `Dry run found ${
-                    payload.count ?? nextRecipients.length
-                  } recipient(s). Review each message before sending.`
+                ? `${payload.count ?? nextRecipients.length} test recipient loaded.`
+                : `${payload.count ?? nextRecipients.length} recipients found.`
           );
         } else {
           setRecipients([]);
           setReviewed(false);
           setMessage(
             testMode
-              ? `Sent to ${payload.sent ?? 0} test address. Confirm delivery in Gmail or at cyz1@test.com if you control that inbox.`
+              ? `Sent to ${payload.sent ?? 0} test address.`
               : `Sent to ${payload.sent ?? 0} recipient(s).`
           );
         }
@@ -499,20 +480,15 @@ export function OutreachForm() {
     >
       <div className="mx-auto w-full max-w-[90rem] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
         <div className="min-w-0">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {campaignFromUrl
               ? loadedCampaign?.status?.toLowerCase() === "sent"
                 ? "Campaign (sent)"
                 : "Campaign"
               : "New campaign"}
           </h1>
-          <p className="mt-2 text-base leading-7 text-muted-foreground">
-            {campaignFromUrl
-              ? "Review what you sent, or use Dry run / Send on drafts still in progress."
-              : "Step 1 of 3. Find recruiters, draft emails, and review before you send."}
-          </p>
           {campaignLoading ? (
-            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2
                 aria-hidden="true"
                 className="size-4 animate-spin"
@@ -521,7 +497,7 @@ export function OutreachForm() {
             </p>
           ) : null}
           {campaignLoadError ? (
-            <p className="mt-3 text-sm text-destructive" role="alert">
+            <p className="mt-2 text-sm text-destructive" role="alert">
               {campaignLoadError}{" "}
               <Link
                 href="/dashboard"
@@ -532,7 +508,7 @@ export function OutreachForm() {
             </p>
           ) : null}
           {campaignFromUrl && loadedCampaign && !campaignLoading ? (
-            <p className="mt-3 text-sm">
+            <p className="mt-2 text-sm">
               <Link
                 href="/dashboard/new"
                 className="font-medium text-primary underline-offset-4 hover:underline"
@@ -543,45 +519,49 @@ export function OutreachForm() {
           ) : null}
         </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(26rem,0.9fr)_minmax(34rem,1.35fr)]">
-          <section className="flex min-w-0 flex-col gap-4">
-            <SetupCard number="1" title="Target company">
-              <Field data-invalid={companyInvalid || undefined}>
-                <FieldLabel htmlFor="company">Company name</FieldLabel>
-                <div className="relative">
-                  <Input
-                    id="company"
-                    list="company-options"
-                    value={company}
-                    onChange={(event) => {
-                      setCompany(event.target.value);
-                      setRecipients([]);
-                      setReviewed(false);
-                    }}
-                    placeholder="Palantir"
-                    className="h-10 rounded-xl pr-11 text-base"
-                    autoComplete="organization"
-                    aria-invalid={companyInvalid || undefined}
-                  />
-                  {companyReady && (
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-primary"
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(22rem,0.85fr)_minmax(34rem,1.15fr)]">
+          <Card className="min-w-0 overflow-hidden rounded-2xl bg-card shadow-sm">
+            <CardContent className="p-0">
+              <div className="px-5 py-4">
+                <Field data-invalid={companyInvalid || undefined}>
+                  <FieldLabel
+                    htmlFor="company"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    Company
+                  </FieldLabel>
+                  <div className="relative mt-2">
+                    <Input
+                      id="company"
+                      list="company-options"
+                      value={company}
+                      onChange={(event) => {
+                        setCompany(event.target.value);
+                        setRecipients([]);
+                        setReviewed(false);
+                      }}
+                      placeholder="Palantir"
+                      className="h-10 rounded-xl pr-11 text-sm font-medium"
+                      autoComplete="organization"
+                      aria-invalid={companyInvalid || undefined}
                     />
-                  )}
-                </div>
-                <datalist id="company-options">
-                  {hints.map((hint) => (
-                    <option key={hint} value={hint} />
-                  ))}
-                </datalist>
-                <FieldDescription>
-                  We&apos;ll find relevant recruiters using your data.
-                  {hints.length > 0
-                    ? ` Available: ${hints.slice(0, 4).join(", ")}.`
-                    : ""}
-                </FieldDescription>
-                <Field orientation="horizontal" className="mt-4 rounded-xl border border-border/80 bg-muted/40 px-4 py-3">
+                    {companyReady && (
+                      <CheckCircle2
+                        aria-hidden="true"
+                        className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-primary"
+                      />
+                    )}
+                  </div>
+                  <datalist id="company-options">
+                    {hints.map((hint) => (
+                      <option key={hint} value={hint} />
+                    ))}
+                  </datalist>
+                </Field>
+                <Field
+                  orientation="horizontal"
+                  className="mt-3 items-center gap-2"
+                >
                   <Checkbox
                     id="test-mode"
                     checked={testMode}
@@ -591,83 +571,88 @@ export function OutreachForm() {
                       setReviewed(false);
                     }}
                   />
-                  <FieldContent>
-                    <FieldLabel htmlFor="test-mode" className="font-semibold">
-                      Test mode
-                    </FieldLabel>
-                    <FieldDescription className="text-xs leading-5">
-                      Skip search and preview{" "}
-                      <span className="font-medium text-foreground">
-                        cyz1@test.com
-                      </span>{" "}
-                      so you can send real messages through Gmail and confirm the
-                      pipeline. Use addresses you control or expect bounces.
-                    </FieldDescription>
-                  </FieldContent>
+                  <FieldLabel
+                    htmlFor="test-mode"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    Test mode
+                  </FieldLabel>
                 </Field>
-              </Field>
-            </SetupCard>
+              </div>
 
-            <SetupCard number="2" title="Email content">
-              <FieldGroup className="gap-3">
-                {isSupabaseConfigured() ? (
-                  <Field>
-                    <FieldLabel htmlFor="saved-template">
-                      Use a saved template
-                    </FieldLabel>
-                    <select
-                      id="saved-template"
-                      disabled={
-                        savedTemplatesLoading || savedTemplates.length === 0
-                      }
-                      value={selectedSavedTemplateId ?? ""}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (!value) {
-                          setSelectedSavedTemplateId(null);
+              {isSupabaseConfigured() ? (
+                <>
+                  <Separator />
+                  <div className="px-5 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <FieldLabel
+                        htmlFor="saved-template"
+                        className="text-xs font-medium text-muted-foreground"
+                      >
+                        Use Email Template{" "}
+                        <span className="font-normal">(optional)</span>
+                      </FieldLabel>
+                      <Link
+                        href="/dashboard/templates"
+                        className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        Create in Templates
+                      </Link>
+                    </div>
+                    {savedTemplates.length > 0 ? (
+                      <select
+                        id="saved-template"
+                        disabled={savedTemplatesLoading}
+                        value={selectedSavedTemplateId ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (!value) {
+                            setSelectedSavedTemplateId(null);
+                            setSavedTemplatesError(null);
+                            return;
+                          }
+                          const row = savedTemplates.find((t) => t.id === value);
+                          if (!row) return;
+                          setSubject(row.subject);
+                          setBodyText(row.body_text);
+                          setSelectedSavedTemplateId(row.id);
                           setSavedTemplatesError(null);
-                          return;
-                        }
-                        const row = savedTemplates.find((t) => t.id === value);
-                        if (!row) return;
-                        setSubject(row.subject);
-                        setBodyText(row.body_text);
-                        setSelectedSavedTemplateId(row.id);
-                        setSavedTemplatesError(null);
-                      }}
-                      className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                    >
-                      <option value="">
-                        {savedTemplatesLoading
-                          ? "Loading templates…"
-                          : savedTemplates.length === 0
-                            ? "No saved templates yet"
-                            : "Choose a template…"}
-                      </option>
-                      {savedTemplates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
+                        }}
+                        className="mt-2 h-9 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      >
+                        <option value="">
+                          {savedTemplatesLoading ? "Loading…" : "None"}
                         </option>
-                      ))}
-                    </select>
+                        {savedTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : savedTemplatesLoading ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Loading…
+                      </p>
+                    ) : null}
                     {savedTemplatesError ? (
                       <p className="mt-2 text-xs text-destructive" role="alert">
                         {savedTemplatesError}
                       </p>
                     ) : null}
-                    <FieldDescription className="mt-2">
-                      <Link
-                        href="/dashboard/templates"
-                        className="font-medium text-primary underline-offset-4 hover:underline"
-                      >
-                        Create and manage templates
-                      </Link>{" "}
-                      in the dashboard.
-                    </FieldDescription>
-                  </Field>
-                ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              <Separator />
+
+              <div className="px-5 py-4">
                 <Field>
-                  <FieldLabel htmlFor="subject">Subject</FieldLabel>
+                  <FieldLabel
+                    htmlFor="subject"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    Subject
+                  </FieldLabel>
                   <Input
                     id="subject"
                     value={subject}
@@ -676,61 +661,43 @@ export function OutreachForm() {
                       setSubject(event.target.value);
                     }}
                     placeholder="Fall 2026 software opportunities"
-                    className="h-10 rounded-xl text-base"
+                    className="mt-2 h-10 rounded-xl text-sm font-medium"
                   />
                 </Field>
+              </div>
 
+              <Separator />
+
+              <div className="px-5 py-4">
                 <Field>
-                  <FieldLabel htmlFor="body">Message</FieldLabel>
-                  <Textarea
+                  <FieldLabel
+                    htmlFor="body"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    Message
+                  </FieldLabel>
+                  <AutosizeTextarea
                     id="body"
                     value={bodyText}
                     onChange={(event) => {
                       setSelectedSavedTemplateId(null);
                       setBodyText(event.target.value);
                     }}
-                    rows={4}
                     placeholder={defaultMessage}
-                    className="min-h-32 resize-y rounded-xl text-base leading-6"
+                    className="mt-2 rounded-xl text-sm leading-relaxed"
                   />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    First name and company will be auto-populated for each
+                    recipient when sent.
+                  </p>
                 </Field>
-              </FieldGroup>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-lg px-3 text-xs"
-                >
-                  Insert field
-                  <ChevronDown data-icon="inline-end" aria-hidden="true" />
-                </Button>
-                {mergeFields.map((field) => (
-                  <Button
-                    key={field}
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="h-8 rounded-lg px-2 text-xs text-primary"
-                    onClick={() => appendMergeField(field)}
-                  >
-                    {field}
-                  </Button>
-                ))}
-              </div>
-
-              {isSupabaseConfigured() ? (
-                <div className="mt-4 rounded-xl border border-border/80 bg-muted/30 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-sm text-muted-foreground">
-                      Save the current subject and message for reuse.
-                    </p>
+                {isSupabaseConfigured() ? (
+                  <div className="mt-3">
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="h-9 rounded-lg"
+                      className="h-8 rounded-lg px-2 text-xs text-muted-foreground"
                       onClick={() => {
                         setSaveTemplateErr(null);
                         setSaveTemplateOpen((open) => {
@@ -748,91 +715,91 @@ export function OutreachForm() {
                       {saveTemplateOpen ? "Cancel" : "Save as template"}
                     </Button>
                   </div>
-                  {saveTemplateOpen ? (
-                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <Field className="min-w-0 flex-1">
-                        <FieldLabel htmlFor="save-template-name">
-                          Template name
-                        </FieldLabel>
-                        <Input
-                          id="save-template-name"
-                          value={saveTemplateName}
-                          onChange={(e) =>
-                            setSaveTemplateName(e.target.value)
-                          }
-                          placeholder="e.g. Fall follow-up"
-                          className="h-10 rounded-xl"
-                        />
-                      </Field>
-                      <Button
-                        type="button"
-                        className="h-10 shrink-0 rounded-xl sm:w-auto"
-                        disabled={
-                          saveTemplateSaving ||
-                          !subject.trim() ||
-                          !bodyText.trim()
+                ) : null}
+                {saveTemplateOpen ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <Field className="min-w-0 flex-1">
+                      <Input
+                        id="save-template-name"
+                        value={saveTemplateName}
+                        onChange={(e) => setSaveTemplateName(e.target.value)}
+                        placeholder="Template name"
+                        className="h-9 rounded-xl text-sm"
+                        aria-label="Template name"
+                      />
+                    </Field>
+                    <Button
+                      type="button"
+                      className="h-9 shrink-0 rounded-xl sm:w-auto"
+                      disabled={
+                        saveTemplateSaving ||
+                        !subject.trim() ||
+                        !bodyText.trim()
+                      }
+                      onClick={() => void (async () => {
+                        const name = saveTemplateName.trim();
+                        if (!name) {
+                          setSaveTemplateErr("Enter a template name.");
+                          return;
                         }
-                        onClick={() => void (async () => {
-                          const name = saveTemplateName.trim();
-                          if (!name) {
-                            setSaveTemplateErr("Enter a template name.");
-                            return;
-                          }
-                          setSaveTemplateSaving(true);
-                          setSaveTemplateErr(null);
-                          const { row, error } = await createEmailTemplate({
-                            name,
-                            subject: subject.trim(),
-                            body_text: bodyText,
-                          });
-                          setSaveTemplateSaving(false);
-                          if (error || !row) {
-                            setSaveTemplateErr(
-                              error?.message ?? "Could not save template."
-                            );
-                            return;
-                          }
-                          setSavedTemplates((current) => [row, ...current]);
-                          setSelectedSavedTemplateId(row.id);
-                          setSaveTemplateOpen(false);
-                        })()}
-                      >
-                        {saveTemplateSaving ? (
-                          <>
-                            <Loader2 className="size-4 animate-spin" />
-                            Saving…
-                          </>
-                        ) : (
-                          "Save to library"
-                        )}
-                      </Button>
-                    </div>
-                  ) : null}
-                  {saveTemplateErr ? (
-                    <p
-                      className="mt-3 text-xs text-destructive"
-                      role="alert"
+                        setSaveTemplateSaving(true);
+                        setSaveTemplateErr(null);
+                        const { row, error } = await createEmailTemplate({
+                          name,
+                          subject: subject.trim(),
+                          body_text: bodyText,
+                        });
+                        setSaveTemplateSaving(false);
+                        if (error || !row) {
+                          setSaveTemplateErr(
+                            error?.message ?? "Could not save template."
+                          );
+                          return;
+                        }
+                        setSavedTemplates((current) => [row, ...current]);
+                        setSelectedSavedTemplateId(row.id);
+                        setSaveTemplateOpen(false);
+                      })()}
                     >
-                      {saveTemplateErr}
-                    </p>
+                      {saveTemplateSaving ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                ) : null}
+                {saveTemplateErr ? (
+                  <p className="mt-2 text-xs text-destructive" role="alert">
+                    {saveTemplateErr}
+                  </p>
+                ) : null}
+              </div>
+
+              <Separator />
+
+              <div className="px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel className="text-xs font-medium text-muted-foreground">
+                    Resume <span className="font-normal">(optional)</span>
+                  </FieldLabel>
+                  {isSupabaseConfigured() ? (
+                    <Link
+                      href="/dashboard/resumes"
+                      className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Manage
+                    </Link>
                   ) : null}
                 </div>
-              ) : null}
-            </SetupCard>
-
-            <SetupCard number="3" title="Attach resume" label="optional">
-              {isSupabaseConfigured() ? (
-                <Field className="mb-4">
-                  <FieldLabel htmlFor="saved-resume">
-                    Use a saved resume
-                  </FieldLabel>
+                {isSupabaseConfigured() && savedResumes.length > 0 ? (
                   <select
                     id="saved-resume"
-                    disabled={
-                      savedResumesLoading ||
-                      libraryAttachLoading ||
-                      savedResumes.length === 0
-                    }
+                    aria-label="Saved resume"
+                    disabled={savedResumesLoading || libraryAttachLoading}
                     value={selectedSavedResumeId ?? ""}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -845,14 +812,12 @@ export function OutreachForm() {
                       const row = savedResumes.find((r) => r.id === value);
                       if (row) void applyLibraryResume(row);
                     }}
-                    className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="mt-2 h-9 w-full appearance-none rounded-xl border border-input bg-card px-3 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     <option value="">
                       {savedResumesLoading
-                        ? "Loading saved resumes…"
-                        : savedResumes.length === 0
-                          ? "No saved resumes yet"
-                          : "Choose from library…"}
+                        ? "Loading…"
+                        : "From library…"}
                     </option>
                     {savedResumes.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -861,97 +826,84 @@ export function OutreachForm() {
                       </option>
                     ))}
                   </select>
-                  {savedResumesError ? (
-                    <p className="mt-2 text-xs text-destructive" role="alert">
-                      {savedResumesError}
-                    </p>
-                  ) : null}
-                  <FieldDescription className="mt-2">
-                    <Link
-                      href="/dashboard/resumes"
-                      className="font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                      Upload and manage resumes
-                    </Link>{" "}
-                    in the library.
-                  </FieldDescription>
-                </Field>
-              ) : null}
-
-              <Field>
-                <FieldLabel htmlFor="resume" className="sr-only">
-                  Resume attachment
-                </FieldLabel>
-                {libraryAttachLoading ? (
-                  <div className="flex min-h-16 items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-5 py-4 text-sm text-muted-foreground">
-                    <Loader2
-                      className="size-5 shrink-0 animate-spin"
-                      aria-hidden="true"
-                    />
-                    Attaching resume from library…
-                  </div>
-                ) : file ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
-                      <FileText aria-hidden="true" className="size-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {file.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {Math.max(1, Math.round(file.size / 1024))} KB
-                        {selectedSavedResumeId ? (
-                          <span className="text-primary"> · From library</span>
-                        ) : null}
-                      </p>
+                ) : null}
+                {savedResumesError ? (
+                  <p className="mt-2 text-xs text-destructive" role="alert">
+                    {savedResumesError}
+                  </p>
+                ) : null}
+                <Field className="mt-3">
+                  <FieldLabel htmlFor="resume" className="sr-only">
+                    Resume attachment
+                  </FieldLabel>
+                  {libraryAttachLoading ? (
+                    <div className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                      <Loader2
+                        className="size-4 shrink-0 animate-spin"
+                        aria-hidden="true"
+                      />
+                      Attaching…
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Remove resume"
-                      onClick={() => {
-                        setFile(null);
-                        setSelectedSavedResumeId(null);
-                      }}
+                  ) : file ? (
+                    <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-3">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
+                        <FileText aria-hidden="true" className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {Math.max(1, Math.round(file.size / 1024))} KB
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Remove resume"
+                        onClick={() => {
+                          setFile(null);
+                          setSelectedSavedResumeId(null);
+                        }}
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="resume"
+                      className="flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-sm transition hover:border-primary/40 hover:bg-accent"
                     >
-                      <X aria-hidden="true" />
-                    </Button>
-                  </div>
-                ) : (
-                  <label
-                    htmlFor="resume"
-                    className="flex min-h-16 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted px-5 py-3 text-center transition hover:border-primary/40 hover:bg-accent"
-                  >
-                    <Input
-                      id="resume"
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      className="sr-only"
-                      onChange={(event) => {
-                        setSelectedSavedResumeId(null);
-                        setFile(event.target.files?.[0] ?? null);
-                      }}
-                    />
-                    <Upload
-                      aria-hidden="true"
-                      className="mb-1 size-5 text-primary"
-                    />
-                    <span className="text-sm font-semibold text-foreground">
-                      Upload resume PDF
-                    </span>
-                  </label>
-                )}
-                <FieldDescription>PDF only. Max 10 MB.</FieldDescription>
-              </Field>
-            </SetupCard>
-          </section>
+                      <Input
+                        id="resume"
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        className="sr-only"
+                        onChange={(event) => {
+                          setSelectedSavedResumeId(null);
+                          setFile(event.target.files?.[0] ?? null);
+                        }}
+                      />
+                      <Upload
+                        aria-hidden="true"
+                        className="size-4 text-primary"
+                      />
+                      <span className="font-medium text-foreground">
+                        Upload PDF
+                      </span>
+                    </label>
+                  )}
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
 
           <ReviewPanel
             recipients={recipients}
             bodyText={bodyText}
             company={company}
+            subject={subject}
             testMode={testMode}
             loading={loading}
             err={err}
@@ -982,13 +934,13 @@ export function OutreachForm() {
                   className="animate-spin"
                 />
               )}
-              Dry run
+              Fetch recruiters
             </Button>
-            <p className="text-sm font-medium text-muted-foreground sm:min-w-36 sm:whitespace-nowrap">
-              {recipients.length > 0
-                ? `${recipients.length} recipients found`
-                : "No recipients found yet"}
-            </p>
+            {recipients.length > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {recipients.length} found
+              </p>
+            ) : null}
           </div>
 
           <Field
@@ -1006,7 +958,7 @@ export function OutreachForm() {
             />
             <FieldContent>
               <FieldLabel htmlFor="reviewed">
-                I have reviewed all recipients and messages
+                Reviewed all messages
               </FieldLabel>
             </FieldContent>
           </Field>
@@ -1035,44 +987,11 @@ export function OutreachForm() {
   );
 }
 
-function SetupCard({
-  number,
-  title,
-  label,
-  children,
-}: {
-  number: string;
-  title: string;
-  label?: string;
-  children: ReactNode;
-}) {
-  return (
-    <Card size="sm" className="rounded-2xl bg-card shadow-sm">
-      <CardHeader className="px-5">
-        <div className="flex items-center gap-3">
-          <Badge
-            variant="secondary"
-            className="size-7 shrink-0 rounded-full p-0 text-sm font-bold"
-          >
-            {number}
-          </Badge>
-          <CardTitle className="text-lg">{title}</CardTitle>
-          {label && (
-            <span className="text-sm font-medium text-muted-foreground">
-              ({label})
-            </span>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="px-5">{children}</CardContent>
-    </Card>
-  );
-}
-
 function ReviewPanel({
   recipients,
   bodyText,
   company,
+  subject,
   testMode,
   loading,
   err,
@@ -1083,6 +1002,7 @@ function ReviewPanel({
   recipients: Recipient[];
   bodyText: string;
   company: string;
+  subject: string;
   testMode: boolean;
   loading: "preview" | "send" | null;
   err: boolean;
@@ -1091,24 +1011,21 @@ function ReviewPanel({
   actionsLocked?: boolean;
 }) {
   return (
-    <Card size="sm" className="min-w-0 rounded-2xl bg-card shadow-sm">
-      <CardHeader className="px-5">
-        <div className="flex items-center gap-3">
-          <Badge
-            variant="secondary"
-            className="size-7 shrink-0 rounded-full p-0 text-sm font-bold"
-          >
-            4
-          </Badge>
-          <CardTitle className="text-lg">
-            Review recipients ({recipients.length})
-            {testMode ? (
-              <Badge variant="outline" className="ml-2 align-middle text-xs font-medium">
-                Test mode
-              </Badge>
-            ) : null}
-          </CardTitle>
-        </div>
+    <Card size="sm" className="min-w-0 overflow-hidden rounded-2xl bg-card shadow-sm">
+      <CardHeader className="border-b border-border px-5 py-4">
+        <CardTitle className="text-base font-semibold">
+          Preview
+          {recipients.length > 0 ? (
+            <span className="ml-2 font-normal text-muted-foreground">
+              ({recipients.length})
+            </span>
+          ) : null}
+          {testMode ? (
+            <Badge variant="outline" className="ml-2 align-middle text-xs font-medium">
+              Test
+            </Badge>
+          ) : null}
+        </CardTitle>
         <CardAction>
           <Button
             type="submit"
@@ -1130,61 +1047,62 @@ function ReviewPanel({
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="px-5">
-        <div className="max-h-none overflow-y-visible pr-0 xl:max-h-[calc(100vh-25rem)] xl:overflow-y-auto xl:pr-1">
+      <CardContent className="p-0">
+        <div className="max-h-none overflow-y-visible px-5 py-4 xl:max-h-[calc(100vh-18rem)] xl:overflow-y-auto">
           {recipients.length === 0 ? (
-            <Empty className="min-h-64 border border-dashed border-border bg-muted">
+            <Empty className="min-h-56 border border-dashed border-border bg-muted/30">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <UsersRound aria-hidden="true" />
                 </EmptyMedia>
                 <EmptyTitle>No recipients yet</EmptyTitle>
                 <EmptyDescription>
-                  {testMode
-                    ? "Run Dry run to load fake test addresses (no SerpAPI)."
-                    : "Run a dry run to find recruiter contacts and preview messages."}
+                  Fetch recruiters to preview outgoing mail.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-2.5">
               {recipients.map((recipient, index) => (
                 <RecipientReview
                   key={`${recipient.email ?? "recipient"}-${index}`}
                   recipient={recipient}
                   bodyText={bodyText}
                   company={company}
+                  subject={subject}
                 />
               ))}
             </div>
           )}
         </div>
 
-        <Alert
-          role={err ? "alert" : "status"}
-          variant={err ? "destructive" : "default"}
-          className={cn(
-            "mt-5",
-            !err && "border-primary/20 bg-accent text-accent-foreground"
-          )}
-        >
-          {err ? (
-            <AlertCircle aria-hidden="true" />
-          ) : (
-            <ShieldCheck aria-hidden="true" />
-          )}
-          <AlertTitle>{err ? "Needs attention" : "Review mode"}</AlertTitle>
-          <AlertDescription
-            className={cn(!err && "text-accent-foreground/80")}
+        {message || errorDetails ? (
+          <Alert
+            role={err ? "alert" : "status"}
+            variant={err ? "destructive" : "default"}
+            className={cn(
+              "mx-5 mb-5 rounded-xl",
+              !err && "border-primary/20 bg-accent text-accent-foreground"
+            )}
           >
-            {message}
-            {err && errorDetails ? (
-              <span className="mt-2 block font-mono text-xs leading-relaxed text-destructive/90">
-                {errorDetails}
-              </span>
+            {err ? (
+              <AlertCircle aria-hidden="true" />
             ) : null}
-          </AlertDescription>
-        </Alert>
+            {err ? (
+              <AlertTitle>Error</AlertTitle>
+            ) : null}
+            <AlertDescription
+              className={cn(!err && "text-accent-foreground/80")}
+            >
+              {message}
+              {err && errorDetails ? (
+                <span className="mt-2 block font-mono text-xs leading-relaxed text-destructive/90">
+                  {errorDetails}
+                </span>
+              ) : null}
+            </AlertDescription>
+          </Alert>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -1194,35 +1112,39 @@ function RecipientReview({
   recipient,
   bodyText,
   company,
+  subject,
 }: {
   recipient: Recipient;
   bodyText: string;
   company: string;
+  subject: string;
 }) {
   const name = recipient.greeting_name || recipientNameFromEmail(recipient.email);
   const snippet = previewSnippet(bodyText, name, company);
 
   return (
-    <article className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-      <Avatar size="lg">
-        <AvatarFallback>{recipientInitial(name)}</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0">
-        <h3 className="truncate text-base font-semibold text-foreground">
-          {name || "Recruiter"}
-        </h3>
-        <p className="mt-1 truncate text-sm text-muted-foreground">
-          Recruiting contact
-          {recipient.email ? ` - ${recipient.email}` : ""}
-        </p>
-        <div className="mt-4 rounded-xl border border-border bg-background px-4 py-3 text-sm leading-6 text-muted-foreground">
-          {snippet}
+    <article className="rounded-xl border border-border bg-muted/25 px-3 py-3">
+      <div className="flex items-start gap-2.5">
+        <Avatar className="size-8 shrink-0">
+          <AvatarFallback className="text-[0.65rem]">
+            {recipientInitial(name)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-foreground">
+            {name || "Recruiter"}
+            {recipient.email ? (
+              <span className="text-muted-foreground"> · {recipient.email}</span>
+            ) : null}
+          </p>
+          <p className="mt-1 line-clamp-1 text-xs font-semibold text-foreground">
+            {subject}
+          </p>
+          <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+            {snippet}
+          </p>
         </div>
       </div>
-      <Button type="button" variant="outline" className="min-h-11 rounded-xl">
-        <Eye data-icon="inline-start" aria-hidden="true" />
-        Preview
-      </Button>
     </article>
   );
 }
@@ -1242,11 +1164,9 @@ function recipientNameFromEmail(email?: string) {
 }
 
 function previewSnippet(bodyText: string, name: string, company: string) {
-  const resolved = (bodyText.trim() || defaultMessage)
+  return (bodyText.trim() || defaultMessage)
     .replaceAll("{{first_name}}", name || "there")
     .replaceAll("__FIRST_NAME__", name || "there")
     .replaceAll("{{company}}", company || "the company")
     .replaceAll("{{role}}", "recruiting");
-
-  return `${resolved.replace(/\s+/g, " ").slice(0, 128)}...`;
 }
