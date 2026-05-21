@@ -37,7 +37,6 @@ const primaryNav = [
 }>;
 
 const utilityNav = [
-  { label: "Help", icon: HelpCircle },
   { label: "Sign out", icon: LogOut },
 ];
 
