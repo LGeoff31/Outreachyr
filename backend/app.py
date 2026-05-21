@@ -65,14 +65,7 @@ def _parse_bool(v: str) -> bool:
     return str(v).lower() in ("true", "1", "on", "yes")
 
 
-def _owner_id_for_send(request: Request, row: dict | None) -> uuid.UUID | None:
-    if row:
-        raw = row.get("supabase_user_id")
-        if raw:
-            try:
-                return uuid.UUID(str(raw))
-            except ValueError:
-                pass
+def _supabase_user_id_from_request(request: Request) -> uuid.UUID | None:
     auth = request.headers.get("authorization") or request.headers.get(
         "Authorization", ""
     )
@@ -83,6 +76,30 @@ def _owner_id_for_send(request: Request, row: dict | None) -> uuid.UUID | None:
         except (RuntimeError, ValueError):
             pass
     return None
+
+
+def _gmail_session_row(request: Request) -> dict | None:
+    sid = request.cookies.get("outreach_session")
+    if sid:
+        row = session_store.get(sid)
+        if row:
+            return row
+
+    owner_id = _supabase_user_id_from_request(request)
+    if owner_id:
+        return session_store.get_by_owner_id(str(owner_id))
+    return None
+
+
+def _owner_id_for_send(request: Request, row: dict | None) -> uuid.UUID | None:
+    if row:
+        raw = row.get("supabase_user_id")
+        if raw:
+            try:
+                return uuid.UUID(str(raw))
+            except ValueError:
+                pass
+    return _supabase_user_id_from_request(request)
 
 
 def _send_campaign(
@@ -108,23 +125,23 @@ def _send_campaign(
         }
 
     if google_oauth_configured():
-        sid = request.cookies.get("outreach_session")
-        if not sid:
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "ok": False,
-                    "code": "gmail_session_missing",
-                    "error": (
-                        "Gmail send session cookie is missing. "
-                        "Sign out and sign in again to reconnect Gmail."
-                    ),
-                    "detail": "No outreach_session cookie was sent with the request.",
-                    "auth_required": True,
-                },
-            )
-        row = session_store.get(sid)
+        row = _gmail_session_row(request)
         if not row:
+            sid = request.cookies.get("outreach_session")
+            if not sid:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "ok": False,
+                        "code": "gmail_session_missing",
+                        "error": (
+                            "Gmail send session cookie is missing. "
+                            "Sign out and sign in again to reconnect Gmail."
+                        ),
+                        "detail": "No outreach_session cookie was sent with the request.",
+                        "auth_required": True,
+                    },
+                )
             return JSONResponse(
                 status_code=401,
                 content={
@@ -376,18 +393,17 @@ def auth_google_session(body: GoogleSessionRequest):
         max_age=60 * 60 * 24 * 60,
         httponly=True,
         samesite="lax",
+        secure=frontend_base_url().startswith("https://"),
         path="/",
     )
     return response
 
 
 @app.get("/api/auth/me")
-def auth_me(outreach_session: str | None = Cookie(default=None)):
+def auth_me(request: Request):
     if not google_oauth_configured():
         return {"authenticated": False, "oauth_required": False, "email": None}
-    if not outreach_session:
-        return {"authenticated": False, "oauth_required": True, "email": None}
-    row = session_store.get(outreach_session)
+    row = _gmail_session_row(request)
     if not row:
         return {"authenticated": False, "oauth_required": True, "email": None}
     return {
