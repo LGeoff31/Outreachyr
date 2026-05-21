@@ -21,7 +21,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { AutosizeTextarea } from "@/components/ui/textarea";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   createEmailTemplate,
@@ -384,12 +384,11 @@ export function TemplatesView() {
               </label>
               <label className="block space-y-2">
                 <span className="text-sm font-medium">Message</span>
-                <Textarea
+                <AutosizeTextarea
                   value={formBody}
                   onChange={(e) => setFormBody(e.target.value)}
-                  rows={10}
                   placeholder="Hi {{first_name}}, ..."
-                  className="min-h-[200px] resize-y rounded-xl text-sm leading-6"
+                  className="rounded-xl text-sm leading-6"
                 />
               </label>
             </div>

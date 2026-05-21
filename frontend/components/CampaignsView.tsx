@@ -1,22 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
-  ChevronDown,
-  Clock,
-  FileText,
   Copy,
   ExternalLink,
   Loader2,
   MoreHorizontal,
   Search,
   Send,
-  SlidersHorizontal,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -46,10 +40,8 @@ type Campaign = {
   description: string;
   company: string;
   status: CampaignStatus;
-  recipients: number | null;
-  resumeAttached: boolean;
   updatedAt: string;
-  updatedAtLabel: string;
+  sentAt: string | null;
   initial: string;
   accent: "blue" | "green" | "amber" | "violet" | "cyan";
 };
@@ -62,18 +54,16 @@ function accentFromId(id: string): Campaign["accent"] {
   return ACCENT_ROTATION[Math.abs(h) % ACCENT_ROTATION.length] as Campaign["accent"];
 }
 
-function formatCampaignUpdatedLabel(iso: string): string {
-  const d = new Date(iso);
-  const datePart = d.toLocaleDateString("en-US", {
+function formatSentAt(value: string): string {
+  const date = new Date(value);
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  if (sameDay) return "Today";
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-  const timePart = d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${datePart} ${timePart}`;
 }
 
 function mapApiCampaign(row: CampaignApiRow): Campaign {
@@ -95,41 +85,12 @@ function mapApiCampaign(row: CampaignApiRow): Campaign {
     description: description || "—",
     company: row.company,
     status,
-    recipients: row.recipient_count,
-    resumeAttached: row.resume_attached,
     updatedAt: ts,
-    updatedAtLabel: formatCampaignUpdatedLabel(ts),
+    sentAt: row.sent_at,
     initial: (title.slice(0, 1) || "?").toUpperCase(),
     accent: accentFromId(row.id),
   };
 }
-
-const summaryCardConfig = [
-  {
-    label: "Total campaigns",
-    detail: "All time",
-    icon: Send,
-    tone: "primary",
-  },
-  {
-    label: "In review",
-    detail: "Ready to send",
-    icon: Clock,
-    tone: "warning",
-  },
-  {
-    label: "Sent",
-    detail: "Completed campaigns",
-    icon: CheckCircle2,
-    tone: "success",
-  },
-  {
-    label: "Drafts",
-    detail: "Not yet reviewed",
-    icon: FileText,
-    tone: "violet",
-  },
-] as const;
 
 const pageSize = 6;
 
@@ -164,56 +125,22 @@ export function CampaignsView() {
     };
   }, []);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("All statuses");
-  const [company, setCompany] = useState("All companies");
-  const [sortBy, setSortBy] = useState("Last updated");
   const [page, setPage] = useState(1);
   const hasCampaigns = campaigns.length > 0;
-
-  const companyOptions = useMemo(
-    () => ["All companies", ...Array.from(new Set(campaigns.map((item) => item.company))).sort()],
-    [campaigns]
-  );
-
-  const summaryCards = useMemo(
-    () =>
-      summaryCardConfig.map((card) => {
-        const value =
-          card.label === "Total campaigns"
-            ? campaigns.length
-            : card.label === "In review"
-              ? campaigns.filter((campaign) => campaign.status === "Review ready").length
-              : card.label === "Sent"
-                ? campaigns.filter((campaign) => campaign.status === "Sent").length
-                : campaigns.filter((campaign) => campaign.status === "Draft").length;
-
-        return { ...card, value: String(value) };
-      }),
-    [campaigns]
-  );
 
   const filteredCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const nextCampaigns = campaigns.filter((campaign) => {
-      const matchesQuery =
-        normalizedQuery.length === 0 ||
-        `${campaign.title} ${campaign.description} ${campaign.company}`
-          .toLowerCase()
-          .includes(normalizedQuery);
-      const matchesStatus =
-        status === "All statuses" || campaign.status === status;
-      const matchesCompany =
-        company === "All companies" || campaign.company === company;
-
-      return matchesQuery && matchesStatus && matchesCompany;
+      if (normalizedQuery.length === 0) return true;
+      return `${campaign.title} ${campaign.description} ${campaign.company}`
+        .toLowerCase()
+        .includes(normalizedQuery);
     });
 
-    return nextCampaigns.sort((a, b) => {
-      if (sortBy === "Company") return a.company.localeCompare(b.company);
-      if (sortBy === "Campaign") return a.title.localeCompare(b.title);
-      return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
-    });
-  }, [campaigns, company, query, sortBy, status]);
+    return nextCampaigns.sort(
+      (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+    );
+  }, [campaigns, query]);
 
   const pageCount = Math.max(1, Math.ceil(filteredCampaigns.length / pageSize));
   const safePage = Math.min(page, pageCount);
@@ -252,17 +179,8 @@ export function CampaignsView() {
           </div>
         </div>
 
-        <section
-          aria-label="Campaign summary"
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-        >
-          {summaryCards.map((card) => (
-            <SummaryCard key={card.label} {...card} />
-          ))}
-        </section>
-
-        <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <label className="relative block min-w-0 flex-1 lg:max-w-[30rem]">
+        <section>
+          <label className="relative block min-w-0 max-w-[30rem]">
             <span className="sr-only">Search campaigns</span>
             <Search
               aria-hidden="true"
@@ -277,57 +195,25 @@ export function CampaignsView() {
               className="h-10 rounded-xl bg-card pl-10 text-sm"
             />
           </label>
-
-          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[34rem]">
-            <FilterSelect
-              label="Status"
-              value={status}
-              onChange={(value) => resetPage(() => setStatus(value))}
-              options={[
-                "All statuses",
-                "Review ready",
-                "Sent",
-                "Draft",
-                "Paused",
-              ]}
-            />
-            <FilterSelect
-              label="Company"
-              value={company}
-              onChange={(value) => resetPage(() => setCompany(value))}
-              options={companyOptions}
-            />
-            <FilterSelect
-              label="Sort by"
-              value={sortBy}
-              onChange={(value) => resetPage(() => setSortBy(value))}
-              options={["Last updated", "Company", "Campaign"]}
-              icon={<SlidersHorizontal aria-hidden="true" className="size-4" />}
-            />
-          </div>
         </section>
 
         <Card className="rounded-2xl bg-card py-0 shadow-sm">
           <CardContent className="px-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[52rem] table-fixed border-collapse text-left text-sm lg:min-w-full">
+              <table className="w-full table-fixed border-collapse text-left text-sm">
                 <colgroup>
-                  <col className="w-[31%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[9%]" />
-                  <col className="w-[11%]" />
+                  <col className="w-[36%]" />
                   <col className="w-[16%]" />
-                  <col className="w-[10%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[18%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border text-xs font-semibold text-foreground">
                     <th className="px-4 py-3 sm:px-5">Campaign</th>
-                    <th className="px-4 py-3">Target company</th>
+                    <th className="px-4 py-3">Company</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Recipients</th>
-                    <th className="px-4 py-3">Resume</th>
-                    <th className="px-4 py-3">Last updated</th>
+                    <th className="px-4 py-3">Date sent</th>
                     <th className="px-4 py-3 text-right sm:px-5">Actions</th>
                   </tr>
                 </thead>
@@ -335,7 +221,7 @@ export function CampaignsView() {
                   {listLoading ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={5}
                         className="px-4 py-14 text-center text-sm text-muted-foreground sm:px-5"
                       >
                         <Loader2
@@ -351,7 +237,7 @@ export function CampaignsView() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 sm:px-5">
+                      <td colSpan={5} className="px-4 py-10 sm:px-5">
                         <CampaignsEmptyState hasCampaigns={hasCampaigns} />
                       </td>
                     </tr>
@@ -364,7 +250,7 @@ export function CampaignsView() {
               <p>
                 {filteredCampaigns.length === 0
                   ? hasCampaigns
-                    ? "No campaigns match your filters"
+                    ? "No campaigns match your search"
                     : "No campaigns yet"
                   : `Showing ${visibleStart} to ${visibleEnd} of ${filteredCampaigns.length} campaigns`}
               </p>
@@ -423,43 +309,6 @@ export function CampaignsView() {
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  tone,
-}: (typeof summaryCardConfig)[number] & { value: string }) {
-  return (
-    <Card className="rounded-2xl bg-card py-0 shadow-sm">
-      <CardContent className="flex items-center gap-4 px-5 py-4">
-        <span
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-full",
-            tone === "primary" &&
-              "bg-primary/10 text-primary",
-            tone === "warning" &&
-              "bg-[hsl(var(--chart-3)/0.14)] text-[hsl(var(--chart-3))]",
-            tone === "success" &&
-              "bg-[hsl(var(--chart-2)/0.14)] text-[hsl(var(--chart-2))]",
-            tone === "violet" &&
-              "bg-[hsl(var(--chart-4)/0.10)] text-[hsl(var(--chart-4))]"
-          )}
-        >
-          <Icon aria-hidden="true" className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="text-xl font-semibold tracking-tight text-foreground">
-            {value}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
   return (
     <Empty className="min-h-56 border border-dashed border-border bg-muted/40">
@@ -472,7 +321,7 @@ function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
         </EmptyTitle>
         <EmptyDescription>
           {hasCampaigns
-            ? "Adjust your search or filters to see more campaigns."
+            ? "Try different keywords in your search."
             : "Create a campaign when you are ready to start tracking outreach."}
         </EmptyDescription>
       </EmptyHeader>
@@ -480,45 +329,8 @@ function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
   );
 }
 
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-  icon,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  icon?: ReactNode;
-}) {
-  return (
-    <label className="relative block">
-      <span className="absolute left-3 top-1 text-[0.7rem] font-medium leading-none text-muted-foreground">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-xl border border-input bg-card px-3 pb-1.5 pt-4 text-sm font-medium text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-        {icon ?? <ChevronDown aria-hidden="true" className="size-4" />}
-      </span>
-    </label>
-  );
-}
-
 function CampaignRow({ campaign }: { campaign: Campaign }) {
   const actionLabel = campaign.status === "Draft" ? "Edit" : "Open";
-  const { date, time } = splitUpdatedAtLabel(campaign.updatedAtLabel);
   const href = `/dashboard/new?campaign=${encodeURIComponent(campaign.id)}`;
 
   return (
@@ -556,28 +368,7 @@ function CampaignRow({ campaign }: { campaign: Campaign }) {
         <StatusBadge status={campaign.status} />
       </td>
       <td className="px-4 py-3 text-muted-foreground">
-        {campaign.recipients === null
-          ? "—"
-          : campaign.status === "Sent"
-            ? `${campaign.recipients} sent`
-            : `${campaign.recipients} found`}
-      </td>
-      <td className="px-4 py-3">
-        {campaign.resumeAttached ? (
-          <span className="inline-flex items-center gap-2 font-medium text-foreground">
-            <CheckCircle2
-              aria-hidden="true"
-              className="size-4 text-[hsl(var(--chart-2))]"
-            />
-            Attached
-          </span>
-        ) : (
-          <span className="text-muted-foreground">Not attached</span>
-        )}
-      </td>
-      <td className="px-4 py-3 text-muted-foreground">
-        <span className="block whitespace-nowrap">{date}</span>
-        <span className="mt-1 block whitespace-nowrap text-xs">{time}</span>
+        {campaign.sentAt ? formatSentAt(campaign.sentAt) : "—"}
       </td>
       <td className="px-4 py-3 sm:px-5">
         <div className="flex justify-end gap-2">
@@ -655,14 +446,6 @@ function CampaignRowActionsMenu({
       </div>
     </details>
   );
-}
-
-function splitUpdatedAtLabel(label: string) {
-  const match = label.match(/^(.+,\s\d{4})\s(.+)$/);
-  return {
-    date: match?.[1] ?? label,
-    time: match?.[2] ?? "",
-  };
 }
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
