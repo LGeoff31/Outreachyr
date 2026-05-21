@@ -47,12 +47,6 @@ function formatUpdatedAt(value: string) {
   });
 }
 
-function truncateBody(text: string, max = 160) {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  if (oneLine.length <= max) return oneLine;
-  return `${oneLine.slice(0, max).trim()}…`;
-}
-
 type EditorState =
   | { mode: "create" }
   | { mode: "edit"; row: EmailTemplateRow };
@@ -65,7 +59,6 @@ export function TemplatesView() {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("Last updated");
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [formName, setFormName] = useState("");
   const [formSubject, setFormSubject] = useState("");
   const [formBody, setFormBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -108,17 +101,14 @@ export function TemplatesView() {
 
   useEffect(() => {
     if (!editor) {
-      setFormName("");
       setFormSubject("");
       setFormBody("");
       return;
     }
     if (editor.mode === "create") {
-      setFormName("");
       setFormSubject("");
       setFormBody("");
     } else {
-      setFormName(editor.row.name);
       setFormSubject(editor.row.subject);
       setFormBody(editor.row.body_text);
     }
@@ -128,11 +118,11 @@ export function TemplatesView() {
     const normalizedQuery = query.trim().toLowerCase();
     const filtered = rows.filter((r) => {
       if (normalizedQuery.length === 0) return true;
-      const blob = `${r.name} ${r.subject} ${r.body_text}`.toLowerCase();
+      const blob = `${r.subject} ${r.body_text}`.toLowerCase();
       return blob.includes(normalizedQuery);
     });
     return [...filtered].sort((a, b) => {
-      if (sortBy === "Name") return a.name.localeCompare(b.name);
+      if (sortBy === "Subject") return a.subject.localeCompare(b.subject);
       return Date.parse(b.updated_at) - Date.parse(a.updated_at);
     });
   }, [query, rows, sortBy]);
@@ -149,11 +139,11 @@ export function TemplatesView() {
 
   async function handleSave() {
     if (!editor) return;
-    const name = formName.trim();
     const subject = formSubject.trim();
     const body_text = formBody.trim();
-    if (!name || !subject || !body_text) {
-      setActionError("Name, subject, and message are required.");
+    const name = subject.slice(0, 80) || "Template";
+    if (!subject || !body_text) {
+      setActionError("Subject and message are required.");
       return;
     }
     setSaving(true);
@@ -192,7 +182,7 @@ export function TemplatesView() {
   async function handleDelete(row: EmailTemplateRow) {
     if (
       !window.confirm(
-        `Delete template "${row.name}"? This cannot be undone.`
+        `Delete this template? This cannot be undone.`
       )
     ) {
       return;
@@ -270,7 +260,7 @@ export function TemplatesView() {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name, subject, or body…"
+              placeholder="Search by subject or message…"
               className="h-10 rounded-xl bg-card pl-10 text-sm"
               disabled={!supabaseReady}
             />
@@ -279,7 +269,7 @@ export function TemplatesView() {
             label="Sort by"
             value={sortBy}
             onChange={setSortBy}
-            options={["Last updated", "Name"]}
+            options={["Last updated", "Subject"]}
             icon={<SlidersHorizontal aria-hidden="true" className="size-4" />}
             disabled={!supabaseReady}
           />
@@ -296,16 +286,16 @@ export function TemplatesView() {
             className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
           >
             {visibleRows.map((row) => (
-              <Card key={row.id} className="rounded-2xl bg-card shadow-sm">
-                <CardContent className="flex min-h-48 flex-col gap-3 p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="text-lg font-semibold leading-snug text-foreground">
-                        {row.name}
-                      </h2>
-                      <p className="mt-1 text-sm font-medium text-muted-foreground line-clamp-2">
+              <Card
+                key={row.id}
+                className="flex h-full flex-col gap-0 py-0 rounded-2xl bg-card shadow-sm"
+              >
+                <CardContent className="flex min-h-48 flex-1 flex-col gap-3 p-5">
+                  <div className="flex shrink-0 items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-sm font-semibold leading-snug text-foreground line-clamp-2">
                         {row.subject}
-                      </p>
+                      </h2>
                     </div>
                     <div className="flex shrink-0 gap-1">
                       <Button
@@ -313,7 +303,7 @@ export function TemplatesView() {
                         variant="ghost"
                         size="icon-sm"
                         className="rounded-lg"
-                        aria-label={`Edit ${row.name}`}
+                        aria-label={`Edit template`}
                         onClick={() => openEdit(row)}
                       >
                         <Pencil aria-hidden className="size-4" />
@@ -323,7 +313,7 @@ export function TemplatesView() {
                         variant="ghost"
                         size="icon-sm"
                         className="rounded-lg text-destructive hover:text-destructive"
-                        aria-label={`Delete ${row.name}`}
+                        aria-label="Delete template"
                         disabled={deletingId === row.id}
                         onClick={() => void handleDelete(row)}
                       >
@@ -335,10 +325,10 @@ export function TemplatesView() {
                       </Button>
                     </div>
                   </div>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    {truncateBody(row.body_text)}
+                  <p className="line-clamp-4 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                    {row.body_text}
                   </p>
-                  <p className="mt-auto text-xs text-muted-foreground">
+                  <p className="shrink-0 pt-1 text-xs text-muted-foreground">
                     Updated {formatUpdatedAt(row.updated_at)}
                   </p>
                 </CardContent>
@@ -397,22 +387,13 @@ export function TemplatesView() {
             </div>
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <label className="block space-y-2">
-                <span className="text-sm font-medium">Name</span>
-                <Input
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Fall recruiting — short"
-                  className="rounded-xl"
-                  autoFocus
-                />
-              </label>
-              <label className="block space-y-2">
                 <span className="text-sm font-medium">Subject</span>
                 <Input
                   value={formSubject}
                   onChange={(e) => setFormSubject(e.target.value)}
                   placeholder="Email subject line"
                   className="rounded-xl"
+                  autoFocus
                 />
               </label>
               <label className="block space-y-2">

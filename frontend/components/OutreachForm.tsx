@@ -770,7 +770,7 @@ export function OutreachForm() {
                         </option>
                         {savedTemplates.map((t) => (
                           <option key={t.id} value={t.id}>
-                            {t.name}
+                            {t.subject}
                           </option>
                         ))}
                       </select>
