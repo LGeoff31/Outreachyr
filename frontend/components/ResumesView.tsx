@@ -99,11 +99,12 @@ export function ResumesView({
   }, []);
 
   useEffect(() => {
+    const objectUrls = objectUrlsRef.current;
     return () => {
-      for (const url of objectUrlsRef.current) {
+      for (const url of objectUrls) {
         URL.revokeObjectURL(url);
       }
-      objectUrlsRef.current.clear();
+      objectUrls.clear();
       if (previewBlobUrlRef.current) {
         URL.revokeObjectURL(previewBlobUrlRef.current);
       }

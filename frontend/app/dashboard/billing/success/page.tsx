@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { confirmCheckoutSession, fetchBillingStatus } from "@/lib/billing";
+import { cn } from "@/lib/utils";
 
 function BillingSuccessContent() {
   const searchParams = useSearchParams();
@@ -66,9 +67,12 @@ function BillingSuccessContent() {
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Unlimited campaigns are now available on your account.
             </p>
-            <Button asChild className="mt-6 rounded-xl">
-              <Link href="/dashboard/new">Start a campaign</Link>
-            </Button>
+            <Link
+              href="/dashboard/new"
+              className={cn(buttonVariants(), "mt-6 rounded-xl")}
+            >
+              Start a campaign
+            </Link>
           </>
         ) : (
           <>
@@ -85,9 +89,15 @@ function BillingSuccessContent() {
                 : "Payment went through but unlock is still pending. Try refreshing, or run Stripe CLI locally for webhooks."}
             </p>
             {!polling ? (
-              <Button asChild variant="outline" className="mt-6 rounded-xl">
-                <Link href="/dashboard/new">Back to campaigns</Link>
-              </Button>
+              <Link
+                href="/dashboard/new"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "mt-6 rounded-xl"
+                )}
+              >
+                Back to campaigns
+              </Link>
             ) : null}
           </>
         )}
