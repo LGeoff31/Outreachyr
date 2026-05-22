@@ -47,6 +47,11 @@ import { Separator } from "@/components/ui/separator";
 import { AutosizeTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { apiErrorMessage, readApiResponse, type ApiErrorBody } from "@/lib/apiError";
+import {
+  fetchBillingStatus,
+  startCampaignUnlockCheckout,
+  type BillingStatus,
+} from "@/lib/billing";
 import { fetchCompanyKeys } from "@/lib/api";
 import {
   diagnoseGmailSendFailure,
@@ -79,6 +84,8 @@ type SendResponse = ApiErrorBody & {
   count?: number;
   recipients?: Recipient[];
   sent?: number;
+  billing?: BillingStatus;
+  code?: string;
 };
 
 const defaultCompany = "Palantir";
@@ -142,6 +149,17 @@ export function OutreachForm() {
     string | null
   >(null);
   const [resumePreviewUrl, setResumePreviewUrl] = useState<string | null>(null);
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(
+    null
+  );
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    void fetchBillingStatus().then(setBillingStatus);
+  }, []);
 
   useEffect(() => {
     fetchCompanyKeys()
@@ -388,25 +406,32 @@ export function OutreachForm() {
     testMode || company.trim().length > 0;
   const campaignActionsLocked =
     loadedCampaign?.status?.toLowerCase() === "sent";
+  const billingBlocked =
+    !testMode &&
+    billingStatus?.billing_enabled === true &&
+    billingStatus.can_send === false;
   const canSend =
     recipients.length > 0 &&
     reviewed &&
     loading === null &&
-    !campaignActionsLocked;
+    !campaignActionsLocked &&
+    !billingBlocked;
   const reviewRequired =
     recipients.length > 0 && !reviewed && !campaignActionsLocked;
   const sendBlockedReason =
     canSend || loading === "send"
       ? undefined
-      : campaignActionsLocked
-        ? "This campaign was already sent."
-        : loading === "preview"
-          ? "Wait for recruiter search to finish."
-          : recipients.length === 0
-            ? "Fetch recruiters and review messages first."
-            : !reviewed
-              ? "Reviewed all messages not checked."
-              : undefined;
+      : billingBlocked
+        ? "Pay $5 once to unlock more campaigns."
+        : campaignActionsLocked
+          ? "This campaign was already sent."
+          : loading === "preview"
+            ? "Wait for recruiter search to finish."
+            : recipients.length === 0
+              ? "Fetch recruiters and review messages first."
+              : !reviewed
+                ? "Reviewed all messages not checked."
+                : undefined;
   const companyInvalid = err && !companyReady;
 
   const saveAsTemplate = useCallback(async () => {
@@ -493,6 +518,16 @@ export function OutreachForm() {
         return;
       }
 
+      if (
+        !dryRun &&
+        !testMode &&
+        billingStatus?.billing_enabled &&
+        !billingStatus.can_send
+      ) {
+        setShowPaywall(true);
+        return;
+      }
+
       setLoading(dryRun ? "preview" : "send");
       setErr(false);
       setSendSuccess(false);
@@ -545,6 +580,12 @@ export function OutreachForm() {
               "The campaign could not be prepared."
             )
           );
+          if (res.status === 402 || payload?.code === "campaign_limit") {
+            if (payload?.billing) setBillingStatus(payload.billing);
+            setShowPaywall(true);
+            setErrorDetails(null);
+            return;
+          }
           if (res.status === 401 || payload?.auth_required) {
             setErrorDetails(
               await diagnoseGmailSendFailure({
@@ -585,6 +626,7 @@ export function OutreachForm() {
           setReviewed(false);
           setSendSuccess(true);
           setCelebrateSend((n) => n + 1);
+          void fetchBillingStatus().then(setBillingStatus);
           setMessage(
             testMode
               ? `Sent to ${payload.sent ?? 0} test address. Check your sent folder to confirm delivery.`
@@ -603,6 +645,7 @@ export function OutreachForm() {
     },
     [
       bodyText,
+      billingStatus,
       campaignActionsLocked,
       company,
       companyReady,
@@ -1135,6 +1178,80 @@ export function OutreachForm() {
           </span>
         </div>
       </div>
+
+      {showPaywall ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center p-4 sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 border-0 bg-black/50"
+            aria-label="Close unlock dialog"
+            onClick={() => setShowPaywall(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-paywall-title"
+            className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+          >
+            <div className="border-b border-border px-5 py-4">
+              <h2
+                id="campaign-paywall-title"
+                className="text-lg font-semibold text-foreground"
+              >
+                Unlock unlimited campaigns
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                You&apos;ve used your 3 free campaigns. Pay $5 once to send as
+                many campaigns as you need — no subscription.
+              </p>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              {checkoutError ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {checkoutError}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={checkoutLoading}
+                onClick={() => setShowPaywall(false)}
+              >
+                Not now
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl"
+                disabled={checkoutLoading}
+                onClick={() => {
+                  setCheckoutLoading(true);
+                  setCheckoutError(null);
+                  void startCampaignUnlockCheckout().catch((e: unknown) => {
+                    setCheckoutError(
+                      e instanceof Error
+                        ? e.message
+                        : "Could not start checkout."
+                    );
+                    setCheckoutLoading(false);
+                  });
+                }}
+              >
+                {checkoutLoading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Redirecting…
+                  </>
+                ) : (
+                  "Unlock for $5"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }

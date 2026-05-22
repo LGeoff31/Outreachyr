@@ -28,7 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-const DEMO_COMPANY = "Palantir";
+const DEMO_COMPANY = "Nvidia";
 
 const DEMO_SUBJECT =
   "Nvidia Summer 2027 Software Engineering Internships!";

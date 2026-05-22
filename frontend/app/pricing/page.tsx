@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Check, Sparkles } from "lucide-react";
 
+import { UnlockCampaignsButton } from "@/components/UnlockCampaignsButton";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -17,11 +18,11 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Pricing | Outreachyr",
   description:
-    "Try Outreachyr free once. Unlock unlimited campaigns with a one-time $10 payment.",
+    "Try Outreachyr with 3 free campaigns. Unlock unlimited campaigns with a one-time $5 payment.",
 };
 
 const freeFeatures = [
-  "One full campaign end to end",
+  "Three full campaigns end to end",
   "Recruiter discovery for any company",
   "Personalized email drafts",
   "Review every recipient before sending",
@@ -38,24 +39,24 @@ const fullFeatures = [
 
 const faqs = [
   {
-    question: "What counts as one free use?",
+    question: "What counts toward the free trial?",
     answer:
-      "Your first completed campaign — from finding recruiters through sending your approved emails — is free. Dry runs and previews do not count against your limit.",
+      "Each completed campaign — from finding recruiters through sending your approved emails — uses one of your 3 free sends. Dry runs and previews do not count.",
   },
   {
-    question: "Is the $10 fee a subscription?",
+    question: "Is the $5 fee a subscription?",
     answer:
       "No. It is a one-time payment. Once unlocked, you can run as many campaigns as you need with no recurring charges.",
   },
   {
     question: "When do I pay?",
     answer:
-      "You can explore and run your first campaign at no cost. If you want to send a second campaign, you will be prompted to pay the one-time $10 fee before sending.",
+      "You can send up to 3 campaigns at no cost. Before your 4th send, you will be prompted to pay the one-time $5 fee.",
   },
   {
     question: "Can I try before I pay?",
     answer:
-      "Yes. Sign in, set up your first campaign, and send it free. You only pay if you come back for more.",
+      "Yes. Sign in and send up to 3 campaigns free. You only pay if you want unlimited access after that.",
   },
 ];
 
@@ -68,7 +69,7 @@ export default function PricingPage() {
             Simple pricing
           </Badge>
           <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
-            Try once free. Pay once if you love it.
+            Three campaigns free. Pay once if you love it.
           </h1>
         </div>
 
@@ -81,7 +82,7 @@ export default function PricingPage() {
               </CardDescription>
               <div className="mt-4 flex items-baseline gap-2">
                 <span className="text-4xl font-semibold tracking-tight">$0</span>
-                <span className="text-sm text-muted-foreground">one campaign</span>
+                <span className="text-sm text-muted-foreground">3 campaigns</span>
               </div>
             </CardHeader>
             <CardContent className="px-6 pt-6">
@@ -124,7 +125,7 @@ export default function PricingPage() {
                 For students running outreach across multiple companies.
               </CardDescription>
               <div className="mt-4 flex items-baseline gap-2">
-                <span className="text-4xl font-semibold tracking-tight">$10</span>
+                <span className="text-4xl font-semibold tracking-tight">$5</span>
                 <span className="text-sm text-muted-foreground">one-time</span>
               </div>
             </CardHeader>
@@ -142,15 +143,7 @@ export default function PricingPage() {
               </ul>
             </CardContent>
             <CardFooter className="px-6 pb-6 pt-2">
-              <Link
-                href="/dashboard/new"
-                className={cn(
-                  buttonVariants({ size: "lg" }),
-                  "min-h-11 w-full rounded-xl text-base font-semibold shadow-lg shadow-primary/15"
-                )}
-              >
-                Unlock for $10
-              </Link>
+              <UnlockCampaignsButton />
             </CardFooter>
           </Card>
         </div>

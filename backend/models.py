@@ -31,6 +31,13 @@ class Profile(Base):
     )
     email: Mapped[str | None] = mapped_column(Text)
     full_name: Mapped[str | None] = mapped_column(Text)
+    campaigns_unlocked: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    unlocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

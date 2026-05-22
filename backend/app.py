@@ -27,6 +27,7 @@ from gmail_send_oauth import send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
 from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
 from campaign_api import persist_sent_campaign, router as campaign_router
+from billing_api import router as billing_router
 from email_template_api import router as email_template_router
 from user_resume_api import router as user_resume_router
 
@@ -51,6 +52,7 @@ app = FastAPI(title="Outreach API", version="0.1.0", lifespan=lifespan)
 app.include_router(user_resume_router)
 app.include_router(email_template_router)
 app.include_router(campaign_router)
+app.include_router(billing_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -100,6 +102,48 @@ def _owner_id_for_send(request: Request, row: dict | None) -> uuid.UUID | None:
             except ValueError:
                 pass
     return _supabase_user_id_from_request(request)
+
+
+def _billing_block_response(request: Request) -> JSONResponse | None:
+    from billing import billing_enabled, require_can_send
+    from database import make_session_factory
+
+    if not billing_enabled():
+        return None
+
+    owner_id = _owner_id_for_send(request, _gmail_session_row(request))
+    if owner_id is None:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "code": "auth_required",
+                "error": "Sign in is required before sending a campaign.",
+                "auth_required": True,
+            },
+        )
+
+    try:
+        session_factory = make_session_factory()
+    except RuntimeError:
+        return None
+
+    with session_factory() as db:
+        blocked = require_can_send(db, owner_id)
+        if blocked is None:
+            return None
+        return JSONResponse(
+            status_code=402,
+            content={
+                "ok": False,
+                "code": "campaign_limit",
+                "error": (
+                    "Your 3 free campaigns have been used. Pay $5 once to unlock "
+                    "unlimited campaigns."
+                ),
+                "billing": blocked,
+            },
+        )
 
 
 def _send_campaign(
@@ -270,6 +314,11 @@ def _run_send(
 
     subj = subject.strip() or None
     body_opt = body_text if body_text.strip() else None
+
+    if not dry_run and not test_mode:
+        blocked = _billing_block_response(request)
+        if blocked is not None:
+            return blocked
 
     return _send_campaign(
         request,
