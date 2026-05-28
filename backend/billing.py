@@ -11,6 +11,7 @@ from models import Campaign, Profile
 
 FREE_CAMPAIGN_LIMIT = 3
 UNLOCK_PRICE_CENTS = 500
+DEFAULT_BILLING_ADMIN_EMAILS = "geoffrey31415@gmail.com"
 
 
 def billing_enabled() -> bool:
@@ -35,11 +36,48 @@ def is_profile_unlocked(session: Session, owner_id: uuid.UUID) -> bool:
     return bool(profile and profile.campaigns_unlocked)
 
 
-def billing_status_for_user(session: Session, owner_id: uuid.UUID) -> dict:
+def billing_admin_emails() -> set[str]:
+    raw = os.environ.get("BILLING_ADMIN_EMAILS", DEFAULT_BILLING_ADMIN_EMAILS)
+    return {email.strip().lower() for email in raw.split(",") if email.strip()}
+
+
+def _resolve_user_email(
+    session: Session, owner_id: uuid.UUID, email: str | None
+) -> str | None:
+    if email and email.strip():
+        return email.strip()
+    profile = session.get(Profile, owner_id)
+    if profile and profile.email:
+        return profile.email.strip()
+    return None
+
+
+def is_billing_admin(
+    session: Session, owner_id: uuid.UUID, email: str | None = None
+) -> bool:
+    resolved = _resolve_user_email(session, owner_id, email)
+    if not resolved:
+        return False
+    return resolved.lower() in billing_admin_emails()
+
+
+def billing_status_for_user(
+    session: Session, owner_id: uuid.UUID, *, email: str | None = None
+) -> dict:
     sent_count = count_sent_campaigns(session, owner_id)
     if not billing_enabled():
         return {
             "billing_enabled": False,
+            "unlocked": True,
+            "sent_count": sent_count,
+            "can_send": True,
+            "free_remaining": None,
+            "price_label": "$5",
+        }
+
+    if is_billing_admin(session, owner_id, email):
+        return {
+            "billing_enabled": True,
             "unlocked": True,
             "sent_count": sent_count,
             "can_send": True,
@@ -62,8 +100,10 @@ def billing_status_for_user(session: Session, owner_id: uuid.UUID) -> dict:
     }
 
 
-def require_can_send(session: Session, owner_id: uuid.UUID) -> dict | None:
-    status = billing_status_for_user(session, owner_id)
+def require_can_send(
+    session: Session, owner_id: uuid.UUID, *, email: str | None = None
+) -> dict | None:
+    status = billing_status_for_user(session, owner_id, email=email)
     if status["can_send"]:
         return None
     return status

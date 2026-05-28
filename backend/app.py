@@ -67,15 +67,24 @@ def _parse_bool(v: str) -> bool:
     return str(v).lower() in ("true", "1", "on", "yes")
 
 
-def _supabase_user_id_from_request(request: Request) -> uuid.UUID | None:
+def _supabase_user_from_request(request: Request) -> dict | None:
     auth = request.headers.get("authorization") or request.headers.get(
         "Authorization", ""
     )
     if auth.startswith("Bearer "):
         try:
-            user = _verify_supabase_user(auth.removeprefix("Bearer ").strip())
+            return _verify_supabase_user(auth.removeprefix("Bearer ").strip())
+        except RuntimeError:
+            pass
+    return None
+
+
+def _supabase_user_id_from_request(request: Request) -> uuid.UUID | None:
+    user = _supabase_user_from_request(request)
+    if user:
+        try:
             return uuid.UUID(str(user["id"]))
-        except (RuntimeError, ValueError):
+        except ValueError:
             pass
     return None
 
@@ -128,8 +137,13 @@ def _billing_block_response(request: Request) -> JSONResponse | None:
     except RuntimeError:
         return None
 
+    user = _supabase_user_from_request(request)
     with session_factory() as db:
-        blocked = require_can_send(db, owner_id)
+        blocked = require_can_send(
+            db,
+            owner_id,
+            email=user.get("email") if user else None,
+        )
         if blocked is None:
             return None
         return JSONResponse(

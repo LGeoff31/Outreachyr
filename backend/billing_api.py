@@ -68,7 +68,7 @@ def billing_status(
     from billing import billing_status_for_user
 
     owner_id = uuid.UUID(str(user["id"]))
-    return billing_status_for_user(db, owner_id)
+    return billing_status_for_user(db, owner_id, email=user.get("email"))
 
 
 @router.post("/billing/checkout")
@@ -147,7 +147,9 @@ def confirm_checkout(
 
     from billing import billing_status_for_user
 
-    return billing_status_for_user(db, uuid.UUID(str(user["id"])))
+    return billing_status_for_user(
+        db, uuid.UUID(str(user["id"])), email=user.get("email")
+    )
 
 
 @router.post("/billing/webhook")
