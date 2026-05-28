@@ -124,6 +124,24 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+/** Scroll within the preview panel only — never the document. */
+function scrollRecipientInPreview(
+  card: HTMLElement | null,
+  container: HTMLElement | null
+) {
+  if (!card || !container) return;
+  const containerRect = container.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  if (cardRect.top >= containerRect.top && cardRect.bottom <= containerRect.bottom) {
+    return;
+  }
+  if (cardRect.top < containerRect.top) {
+    container.scrollTop += cardRect.top - containerRect.top - 8;
+  } else if (cardRect.bottom > containerRect.bottom) {
+    container.scrollTop += cardRect.bottom - containerRect.bottom + 8;
+  }
+}
+
 function resolveTemplate(
   text: string,
   firstName: string,
@@ -163,6 +181,7 @@ export function LandingCampaignDemo() {
   const emailCardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const sendWrapRef = useRef<HTMLDivElement>(null);
+  const demoVisibleRef = useRef(true);
 
   const recipientBodies = useMemo(
     () =>
@@ -173,6 +192,19 @@ export function LandingCampaignDemo() {
   );
 
   useEffect(() => {
+    const root = document.getElementById("landing-campaign-demo");
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        demoVisibleRef.current = entry.isIntersecting;
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (stage !== "review") return;
     const el = previewScrollRef.current;
     if (!el) return;
@@ -181,8 +213,10 @@ export function LandingCampaignDemo() {
 
   useEffect(() => {
     if (stage !== "review" || focusRecipient === null) return;
-    const el = emailCardRefs.current[focusRecipient];
-    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    scrollRecipientInPreview(
+      emailCardRefs.current[focusRecipient],
+      previewScrollRef.current
+    );
   }, [stage, focusRecipient]);
 
   useEffect(() => {
@@ -240,6 +274,12 @@ export function LandingCampaignDemo() {
       ).matches;
     }
 
+    async function waitUntilVisible() {
+      while (!demoVisibleRef.current && !cancelled) {
+        await sleep(150);
+      }
+    }
+
     async function moveCursorTo(el: HTMLElement | null, pad = 8) {
       if (!el || reduceMotion) return;
       const rect = el.getBoundingClientRect();
@@ -258,6 +298,9 @@ export function LandingCampaignDemo() {
     }
 
     async function playCycle() {
+      await waitUntilVisible();
+      if (cancelled) return;
+
       if (reduceMotion) {
         setTypedSubject(DEMO_SUBJECT);
         setTypedBody(DEMO_BODY);
@@ -409,7 +452,7 @@ export function LandingCampaignDemo() {
 
   return (
     <div
-      className="relative min-w-0 max-w-[calc(100vw-2.5rem)] self-center scroll-mt-24 sm:max-w-none"
+      className="relative min-w-0 max-w-[calc(100vw-2.5rem)] self-center overflow-anchor-none sm:max-w-none"
       id="landing-campaign-demo"
     >
       <div className="absolute inset-0 translate-y-10 rounded-[2rem] bg-primary/10 blur-3xl" />
@@ -562,7 +605,7 @@ export function LandingCampaignDemo() {
 
               <div
                 ref={previewScrollRef}
-                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth px-5 py-4 [scrollbar-gutter:stable] [scrollbar-width:thin]"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain overflow-anchor-none scroll-smooth px-5 py-4 [scrollbar-gutter:stable] [scrollbar-width:thin]"
               >
                 <div className="flex flex-col gap-2.5 pb-1">
                   {DEMO_RECIPIENTS.map((person, i) => (

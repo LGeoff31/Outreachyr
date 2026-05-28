@@ -3,6 +3,8 @@ import { LayoutDashboard, Lock, PenLine } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { LandingCampaignDemo } from "@/components/LandingCampaignDemo";
+import { LandingDifferentiators } from "@/components/LandingDifferentiators";
+import { LandingPricing } from "@/components/LandingPricing";
 import { LandingSocialProof } from "@/components/LandingSocialProof";
 import { cn } from "@/lib/utils";
 
@@ -16,9 +18,9 @@ export default function HomePage() {
               Reach the right <span className="text-primary">recruiters.</span>
             </h1>
             <p className="mt-5 max-w-xl text-balance text-xl font-medium tracking-tight sm:text-2xl">
-              <span className="font-semibold text-primary">Guaranteed responses</span>
+              <span className="font-semibold text-primary">Personalized emails</span>
               {", "}
-              <span className="font-semibold text-foreground">more interviews</span>.
+              <span className="font-semibold text-foreground">not LinkedIn spam.</span>
             </p>
             <p className="mt-8 flex items-center gap-3 text-sm font-medium text-muted-foreground">
               <Lock aria-hidden="true" className="size-5 text-foreground" />
@@ -50,7 +52,9 @@ export default function HomePage() {
         </div>
       </section>
 
+      <LandingDifferentiators />
       <LandingSocialProof />
+      <LandingPricing />
     </div>
   );
 }
