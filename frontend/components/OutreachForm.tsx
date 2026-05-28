@@ -496,6 +496,23 @@ export function OutreachForm() {
     window.setTimeout(() => setSaveResumeSaved(false), 2000);
   }, [file, selectedSavedResumeId]);
 
+  const resetFormFields = useCallback(() => {
+    setCompany(defaultCompany);
+    setSubject(defaultSubject);
+    setBodyText(defaultMessage);
+    setFile(null);
+    setSelectedSavedResumeId(null);
+    setSelectedSavedTemplateId(null);
+    setTestMode(false);
+    setErr(false);
+    setErrorDetails(null);
+
+    const defaultRow = savedResumes.find((r) => r.is_default);
+    if (defaultRow) {
+      void applyLibraryResume(defaultRow);
+    }
+  }, [applyLibraryResume, savedResumes]);
+
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
       if (!companyReady) {
@@ -632,6 +649,7 @@ export function OutreachForm() {
               ? `Sent to ${payload.sent ?? 0} test address. Check your sent folder to confirm delivery.`
               : `Sent to ${payload.sent ?? 0} recipient(s). Check your inbox for replies.`
           );
+          resetFormFields();
         }
       } catch (e) {
         setErr(true);
@@ -655,6 +673,7 @@ export function OutreachForm() {
       selectedSavedResumeId,
       subject,
       testMode,
+      resetFormFields,
     ]
   );
 
