@@ -216,13 +216,27 @@ def _send_campaign(
             )
             send_messages_oauth(creds, messages)
         except RefreshError as e:
+            err_text = str(e)
+            detail = "Reconnect Gmail by signing out and signing in again."
+            if "invalid_scope" in err_text:
+                detail = (
+                    "Gmail permissions on your Google account do not match what "
+                    "Outreachyr expects. Sign out, revoke Outreachyr at "
+                    "myaccount.google.com/permissions, then sign in again."
+                )
+            elif "invalid_grant" in err_text:
+                detail = (
+                    "Google rejected the stored login. Sign out and sign in again. "
+                    "If this keeps happening, confirm Vercel GOOGLE_CLIENT_ID matches "
+                    "the Google OAuth client configured in Supabase Auth."
+                )
             return JSONResponse(
                 status_code=401,
                 content={
                     "ok": False,
                     "code": "google_refresh_revoked",
                     "error": f"Google login expired or revoked: {e}",
-                    "detail": "Reconnect Gmail by signing out and signing in again.",
+                    "detail": detail,
                     "auth_required": True,
                 },
             )
@@ -412,11 +426,35 @@ def auth_google_session(body: GoogleSessionRequest):
         )
 
     session_id = secrets.token_urlsafe(32)
+    refresh_token = body.provider_refresh_token.strip()
+    try:
+        google_auth.verify_provider_refresh_token(refresh_token)
+    except RefreshError as e:
+        err_text = str(e)
+        detail = (
+            "Could not refresh Gmail access with the stored Google login. "
+            "Sign out, revoke Outreachyr at myaccount.google.com/permissions, "
+            "then sign in again."
+        )
+        if "invalid_grant" in err_text:
+            detail = (
+                "Google rejected the login token. Confirm Vercel GOOGLE_CLIENT_ID "
+                "matches the OAuth client in Supabase Auth → Google, then sign in again."
+            )
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "code": "google_refresh_failed",
+                "error": f"Google token refresh failed: {e}",
+                "detail": detail,
+            },
+        )
     try:
         session_store.upsert(
             session_id,
             {
-                "refresh_token": body.provider_refresh_token.strip(),
+                "refresh_token": refresh_token,
                 "email": user["email"],
                 "supabase_user_id": user["id"],
             },

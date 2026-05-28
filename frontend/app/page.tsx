@@ -3,6 +3,7 @@ import { LayoutDashboard, Lock, PenLine } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { LandingCampaignDemo } from "@/components/LandingCampaignDemo";
+import { LandingSocialProof } from "@/components/LandingSocialProof";
 import { cn } from "@/lib/utils";
 
 export default function HomePage() {
@@ -48,6 +49,8 @@ export default function HomePage() {
           <LandingCampaignDemo />
         </div>
       </section>
+
+      <LandingSocialProof />
     </div>
   );
 }

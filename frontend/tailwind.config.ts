@@ -59,6 +59,15 @@ const config: Config = {
         mesh:
           "radial-gradient(at 40% 20%, hsla(228, 100%, 74%, 0.15) 0, transparent 50%), radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.12) 0, transparent 50%), radial-gradient(at 0% 50%, hsla(355, 100%, 93%, 0.08) 0, transparent 50%)",
       },
+      keyframes: {
+        "logo-marquee": {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+      },
+      animation: {
+        "logo-marquee": "logo-marquee 45s linear infinite",
+      },
     },
   },
   plugins: [

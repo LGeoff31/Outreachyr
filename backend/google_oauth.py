@@ -7,14 +7,17 @@ import os
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 
 from config import google_redirect_uri
 
+# Must match frontend/lib/auth.ts GOOGLE_OAUTH_SCOPES (Supabase Google provider).
 GOOGLE_SCOPES = [
     "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
+    "email",
+    "profile",
     "https://www.googleapis.com/auth/gmail.send",
 ]
 
@@ -89,11 +92,21 @@ def fetch_google_email(access_token: str) -> str:
 
 
 def credentials_from_refresh(refresh_token: str) -> Credentials:
+    """Build credentials for token refresh.
+
+    Do not pass scopes here — Supabase issues the refresh token with its own
+    scope set. Requesting different scopes on refresh causes invalid_scope.
+    """
     return Credentials(
         token=None,
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ["GOOGLE_CLIENT_ID"].strip(),
         client_secret=os.environ["GOOGLE_CLIENT_SECRET"].strip(),
-        scopes=GOOGLE_SCOPES,
     )
+
+
+def verify_provider_refresh_token(refresh_token: str) -> None:
+    """Ensure Supabase's Google refresh token works with our OAuth client."""
+    creds = credentials_from_refresh(refresh_token)
+    creds.refresh(GoogleAuthRequest())
