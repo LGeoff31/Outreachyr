@@ -74,3 +74,35 @@ export async function fetchCampaignDetail(
     };
   }
 }
+
+export async function downloadCampaignResume(
+  campaignId: string,
+  suggestedFilename: string
+): Promise<{ error: Error | null }> {
+  try {
+    const res = await fetch(
+      `/api/campaigns/${encodeURIComponent(campaignId)}/resume`,
+      { headers: await resumeApiAuthHeaders() }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return {
+        error: new Error(text || `${res.status} ${res.statusText}`),
+      };
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = suggestedFilename.endsWith(".pdf")
+      ? suggestedFilename
+      : `${suggestedFilename}.pdf`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    return { error: null };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}

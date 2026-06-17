@@ -105,7 +105,7 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]
 
 def test_recipients() -> list[tuple[str, str]]:
     """Fixed address for end-to-end send checks (no SerpAPI, no domain mapping)."""
-    return [("geoffrey.lee@test.com", "Casey"), ("electricochy1@gmail.com", "electricochy"), ("lgeoff31@gmail.com", "geoff")]
+    return [("geoffrey.lee@test.com", "Casey"), ("electricochy1@gmail.com", "electricochy"), ("lgeoff31@gmail.com", "geoff"), ("geoffrey.lee@cloudkitchens.com", "geoff")]
 
 
 def discover(company: str) -> list[tuple[str, str]]:

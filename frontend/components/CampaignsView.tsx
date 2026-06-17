@@ -6,7 +6,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Copy,
+  Download,
   ExternalLink,
+  FileText,
   Loader2,
   MoreHorizontal,
   Search,
@@ -28,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   fetchCampaignRows,
+  downloadCampaignResume,
   type CampaignApiRow,
 } from "@/lib/supabase/campaigns";
 import { buttonVariants } from "@/components/ui/button";
@@ -42,6 +45,7 @@ type Campaign = {
   status: CampaignStatus;
   updatedAt: string;
   sentAt: string | null;
+  resumeAttached: boolean;
   initial: string;
   accent: "blue" | "green" | "amber" | "violet" | "cyan";
 };
@@ -87,6 +91,7 @@ function mapApiCampaign(row: CampaignApiRow): Campaign {
     status,
     updatedAt: ts,
     sentAt: row.sent_at,
+    resumeAttached: row.resume_attached,
     initial: (title.slice(0, 1) || "?").toUpperCase(),
     accent: accentFromId(row.id),
   };
@@ -202,11 +207,12 @@ export function CampaignsView() {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left text-sm">
                 <colgroup>
-                  <col className="w-[36%]" />
-                  <col className="w-[16%]" />
+                  <col className="w-[30%]" />
                   <col className="w-[14%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[18%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[17%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border text-xs font-semibold text-foreground">
@@ -214,6 +220,7 @@ export function CampaignsView() {
                     <th className="px-4 py-3">Company</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Date sent</th>
+                    <th className="px-4 py-3">Attachment</th>
                     <th className="px-4 py-3 text-right sm:px-5">Actions</th>
                   </tr>
                 </thead>
@@ -221,7 +228,7 @@ export function CampaignsView() {
                   {listLoading ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-4 py-14 text-center text-sm text-muted-foreground sm:px-5"
                       >
                         <Loader2
@@ -237,7 +244,7 @@ export function CampaignsView() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={5} className="px-4 py-10 sm:px-5">
+                      <td colSpan={6} className="px-4 py-10 sm:px-5">
                         <CampaignsEmptyState hasCampaigns={hasCampaigns} />
                       </td>
                     </tr>
@@ -332,6 +339,23 @@ function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
 function CampaignRow({ campaign }: { campaign: Campaign }) {
   const actionLabel = campaign.status === "Draft" ? "Edit" : "Open";
   const href = `/dashboard/new?campaign=${encodeURIComponent(campaign.id)}`;
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handleDownloadResume() {
+    if (!campaign.resumeAttached || downloading) return;
+    setDownloading(true);
+    setDownloadError(null);
+    const safeCompany = campaign.company.trim().replace(/[/\\]/g, "-") || "resume";
+    const { error } = await downloadCampaignResume(
+      campaign.id,
+      `${safeCompany}-resume.pdf`
+    );
+    setDownloading(false);
+    if (error) {
+      setDownloadError(error.message);
+    }
+  }
 
   return (
     <tr className="border-b border-border last:border-b-0">
@@ -369,6 +393,38 @@ function CampaignRow({ campaign }: { campaign: Campaign }) {
       </td>
       <td className="px-4 py-3 text-muted-foreground">
         {campaign.sentAt ? formatSentAt(campaign.sentAt) : "—"}
+      </td>
+      <td className="px-4 py-3">
+        {campaign.resumeAttached ? (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <FileText aria-hidden="true" className="size-3.5 shrink-0" />
+              <span className="text-sm">Resume</span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={downloading}
+              className="h-7 rounded-lg px-2.5 text-xs"
+              onClick={() => void handleDownloadResume()}
+            >
+              {downloading ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Download className="size-3.5" aria-hidden />
+              )}
+              Download
+            </Button>
+            {downloadError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {downloadError}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </td>
       <td className="px-4 py-3 sm:px-5">
         <div className="flex justify-end gap-2">

@@ -7,13 +7,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database import make_session_factory
 from models import Campaign, CampaignRecipient
-from user_resume_api import get_db_session, require_supabase_user
+from user_resume_api import get_db_session, require_supabase_user, storage_download_object
 
 logger = logging.getLogger(__name__)
 
@@ -159,3 +160,42 @@ def get_campaign(
     if camp is None:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return _campaign_detail_json(session, camp)
+
+
+@router.get("/campaigns/{campaign_id}/resume")
+def get_campaign_resume_file(
+    campaign_id: uuid.UUID,
+    request: Request,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+):
+    uid = uuid.UUID(user["id"])
+    camp = session.scalar(
+        select(Campaign).where(
+            Campaign.id == campaign_id,
+            Campaign.owner_id == uid,
+        )
+    )
+    if camp is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    path = (camp.resume_storage_path or "").strip()
+    if not path:
+        raise HTTPException(status_code=404, detail="No resume attached to this campaign")
+
+    uid_str = str(uid)
+    if not path.startswith(f"{uid_str}/"):
+        raise HTTPException(status_code=403, detail="Invalid storage path")
+
+    token = request.state.supabase_access_token
+    data = storage_download_object(token, path)
+    company = (camp.company or "resume").strip().replace('"', "").replace("/", "-")
+    safe_name = f"{company}-resume"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}.pdf"',
+            "Cache-Control": "private, max-age=0, no-store",
+        },
+    )

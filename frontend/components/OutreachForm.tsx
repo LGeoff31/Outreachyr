@@ -9,7 +9,6 @@ import {
   Eye,
   FileText,
   Loader2,
-  Lock,
   Search,
   SendHorizontal,
   Upload,
@@ -39,7 +38,6 @@ import {
 } from "@/components/ui/empty";
 import {
   Field,
-  FieldContent,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -84,6 +82,7 @@ type SendResponse = ApiErrorBody & {
   count?: number;
   recipients?: Recipient[];
   sent?: number;
+  queued?: boolean;
   billing?: BillingStatus;
   code?: string;
 };
@@ -131,9 +130,9 @@ export function OutreachForm() {
   const [saveResumeErr, setSaveResumeErr] = useState<string | null>(null);
   const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
-  const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
+  const [sendQueued, setSendQueued] = useState(false);
   const [celebrateSend, setCelebrateSend] = useState(0);
   const sendButtonWrapRef = useRef<HTMLSpanElement>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
@@ -316,7 +315,6 @@ export function OutreachForm() {
       setSubject(defaultSubject);
       setBodyText(defaultMessage);
       setRecipients([]);
-      setReviewed(false);
       setTestMode(false);
       setErr(false);
       setMessage("");
@@ -359,7 +357,6 @@ export function OutreachForm() {
       setTestMode(false);
       setSelectedSavedTemplateId(null);
       const sent = data.status.toLowerCase() === "sent";
-      setReviewed(sent && data.recipients.length > 0);
       setLoadedCampaign(data);
       setErr(false);
       setMessage(
@@ -412,12 +409,9 @@ export function OutreachForm() {
     billingStatus.can_send === false;
   const canSend =
     recipients.length > 0 &&
-    reviewed &&
     loading === null &&
     !campaignActionsLocked &&
     !billingBlocked;
-  const reviewRequired =
-    recipients.length > 0 && !reviewed && !campaignActionsLocked;
   const sendBlockedReason =
     canSend || loading === "send"
       ? undefined
@@ -428,10 +422,8 @@ export function OutreachForm() {
           : loading === "preview"
             ? "Wait for recruiter search to finish."
             : recipients.length === 0
-              ? "Fetch recruiters and review messages first."
-              : !reviewed
-                ? "Reviewed all messages not checked."
-                : undefined;
+              ? "Fetch recruiters first."
+              : undefined;
   const companyInvalid = err && !companyReady;
 
   const saveAsTemplate = useCallback(async () => {
@@ -529,12 +521,6 @@ export function OutreachForm() {
         return;
       }
 
-      if (!dryRun && !reviewed) {
-        setErr(true);
-        setMessage("Review all recipients and messages before sending.");
-        return;
-      }
-
       if (
         !dryRun &&
         !testMode &&
@@ -548,6 +534,7 @@ export function OutreachForm() {
       setLoading(dryRun ? "preview" : "send");
       setErr(false);
       setSendSuccess(false);
+      setSendQueued(false);
       setErrorDetails(null);
       setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
 
@@ -629,7 +616,6 @@ export function OutreachForm() {
         if (payload.dry_run) {
           const nextRecipients = payload.recipients ?? [];
           setRecipients(nextRecipients);
-          setReviewed(false);
           setSendSuccess(false);
           setMessage(
             nextRecipients.length === 0
@@ -639,16 +625,28 @@ export function OutreachForm() {
                 : `${payload.count ?? nextRecipients.length} recipients found.`
           );
         } else {
+          const recipientCount = payload.sent ?? payload.count ?? 0;
+          const queued = payload.queued === true;
           setRecipients([]);
-          setReviewed(false);
           setSendSuccess(true);
+          setSendQueued(queued);
           setCelebrateSend((n) => n + 1);
           void fetchBillingStatus().then(setBillingStatus);
-          setMessage(
-            testMode
-              ? `Sent to ${payload.sent ?? 0} test address. Check your sent folder to confirm delivery.`
-              : `Sent to ${payload.sent ?? 0} recipient(s). Check your inbox for replies.`
-          );
+          if (testMode) {
+            setMessage(
+              queued
+                ? `Sending to your test address in the background. Emails are spaced out in small batches so they don't look like spam — check your Sent folder shortly.`
+                : `Sent to ${recipientCount} test address. Check your sent folder to confirm delivery.`
+            );
+          } else if (queued) {
+            setMessage(
+              `Campaign started for ${recipientCount} recipient(s). Emails are sent in spaced batches from your Gmail account (not all at once) to protect deliverability. Check your Sent folder over the next several minutes.`
+            );
+          } else {
+            setMessage(
+              `Sent to ${recipientCount} recipient(s). Check your inbox for replies.`
+            );
+          }
           resetFormFields();
         }
       } catch (e) {
@@ -668,7 +666,6 @@ export function OutreachForm() {
       company,
       companyReady,
       file,
-      reviewed,
       savedResumes,
       selectedSavedResumeId,
       subject,
@@ -745,7 +742,6 @@ export function OutreachForm() {
                       onChange={(event) => {
                         setCompany(event.target.value);
                         setRecipients([]);
-                        setReviewed(false);
                       }}
                       placeholder="Palantir"
                       className="h-10 rounded-xl pr-11 text-sm font-medium"
@@ -775,7 +771,6 @@ export function OutreachForm() {
                     onCheckedChange={(checked) => {
                       setTestMode(checked === true);
                       setRecipients([]);
-                      setReviewed(false);
                     }}
                   />
                   <FieldLabel
@@ -1109,6 +1104,7 @@ export function OutreachForm() {
             message={message}
             errorDetails={errorDetails}
             sendSuccess={sendSuccess}
+            sendQueued={sendQueued}
             actionsLocked={campaignActionsLocked}
           />
         </div>
@@ -1131,32 +1127,6 @@ export function OutreachForm() {
               </p>
             ) : null}
           </div>
-
-          <Field
-            orientation="horizontal"
-            data-disabled={
-              recipients.length === 0 || campaignActionsLocked || undefined
-            }
-            className="rounded-xl px-0"
-          >
-            <Checkbox
-              id="reviewed"
-              checked={reviewed}
-              onCheckedChange={(checked) => setReviewed(checked === true)}
-              disabled={recipients.length === 0 || campaignActionsLocked}
-            />
-            <FieldContent>
-              <FieldLabel htmlFor="reviewed" className="flex items-center gap-1.5">
-                Reviewed all messages
-                {reviewRequired ? (
-                  <Lock
-                    className="size-3.5 shrink-0 text-muted-foreground"
-                    aria-hidden
-                  />
-                ) : null}
-              </FieldLabel>
-            </FieldContent>
-          </Field>
 
           <span
             ref={sendButtonWrapRef}
@@ -1288,6 +1258,7 @@ function ReviewPanel({
   message,
   errorDetails,
   sendSuccess = false,
+  sendQueued = false,
   actionsLocked = false,
 }: {
   recipients: Recipient[];
@@ -1302,6 +1273,7 @@ function ReviewPanel({
   message: string;
   errorDetails: string | null;
   sendSuccess?: boolean;
+  sendQueued?: boolean;
   actionsLocked?: boolean;
 }) {
   const [fullPreview, setFullPreview] = useState<Recipient | null>(null);
@@ -1419,7 +1391,9 @@ function ReviewPanel({
             {err ? (
               <AlertTitle>Error</AlertTitle>
             ) : sendSuccess ? (
-              <AlertTitle>Campaign sent</AlertTitle>
+              <AlertTitle>
+                {sendQueued ? "Campaign sending" : "Campaign sent"}
+              </AlertTitle>
             ) : null}
             <AlertDescription
               className={cn(!err && "text-accent-foreground/80")}

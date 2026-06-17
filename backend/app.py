@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import secrets
+import threading
 import uuid
 from contextlib import asynccontextmanager
+from email.message import EmailMessage
 
 from fastapi import Cookie, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +26,7 @@ from config import (
     supabase_publishable_key,
     supabase_url,
 )
-from gmail_send_oauth import send_messages_oauth
+from gmail_send_oauth import ensure_fresh_access_token, send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
 from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
 from campaign_api import persist_sent_campaign, router as campaign_router
@@ -32,6 +35,7 @@ from email_template_api import router as email_template_router
 from user_resume_api import router as user_resume_router
 
 _app_init_done = False
+logger = logging.getLogger(__name__)
 
 
 def ensure_env() -> None:
@@ -160,6 +164,38 @@ def _billing_block_response(request: Request) -> JSONResponse | None:
         )
 
 
+def _send_campaign_in_background(
+    refresh_token: str,
+    sender_email: str,
+    messages: list[EmailMessage],
+    *,
+    people: list[tuple[str, str]],
+    company: str,
+    subject: str,
+    body_text: str,
+    owner_id: uuid.UUID | None,
+    resume_storage_path: str | None,
+) -> None:
+    try:
+        creds = google_auth.credentials_from_refresh(refresh_token)
+        send_messages_oauth(creds, messages)
+        if owner_id:
+            persist_sent_campaign(
+                owner_id,
+                company=company,
+                subject=subject,
+                body_text=body_text,
+                people=people,
+                resume_storage_path=resume_storage_path,
+            )
+    except Exception:
+        logger.exception(
+            "Background campaign send failed for %s (%d messages)",
+            sender_email,
+            len(messages),
+        )
+
+
 def _send_campaign(
     request: Request,
     *,
@@ -228,7 +264,7 @@ def _send_campaign(
                 resume_bytes=resume_bytes,
                 resume_filename=resume_filename or "resume.pdf",
             )
-            send_messages_oauth(creds, messages)
+            ensure_fresh_access_token(creds)
         except RefreshError as e:
             err_text = str(e)
             detail = "Reconnect Gmail by signing out and signing in again."
@@ -273,16 +309,31 @@ def _send_campaign(
         subj_final = subject if subject is not None else ""
         body_final = body_opt if body_opt is not None else ""
         path_clean = (resume_storage_path or "").strip() or None
-        if owner_id:
-            persist_sent_campaign(
-                owner_id,
-                company=company,
-                subject=subj_final,
-                body_text=body_final,
-                people=people,
-                resume_storage_path=path_clean,
-            )
-        return {"ok": True, "dry_run": False, "sent": len(people)}
+
+        thread = threading.Thread(
+            target=_send_campaign_in_background,
+            kwargs={
+                "refresh_token": row["refresh_token"],
+                "sender_email": sender,
+                "messages": messages,
+                "people": people,
+                "company": company,
+                "subject": subj_final,
+                "body_text": body_final,
+                "owner_id": owner_id,
+                "resume_storage_path": path_clean,
+            },
+            name=f"campaign-send-{owner_id or 'anon'}",
+            daemon=False,
+        )
+        thread.start()
+        return {
+            "ok": True,
+            "dry_run": False,
+            "queued": True,
+            "sent": len(people),
+            "count": len(people),
+        }
 
     return JSONResponse(
         status_code=503,
