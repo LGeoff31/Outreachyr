@@ -499,7 +499,7 @@ export function ResumesView({
                 resume={resume}
                 deleting={deletingId === resume.id}
                 onPreview={(url) => void openResumePreview(resume, url)}
-                 onDelete={() => void handleDelete(resume)}
+                onDelete={() => setResumeToDelete(resume)}
                 onEdit={() => {
                   setProfileError(null);
                   setPendingReviewResumeId(
@@ -762,7 +762,6 @@ type ExperienceDraft = {
   endDate: string;
   isCurrent: boolean;
   description: string;
-  highlights: string;
   skills: string;
 };
 
@@ -1377,11 +1376,6 @@ function ExperienceEditor({
                 value={item.description}
                 onChange={(value) => onChange(index, { description: value })}
               />
-              <TextareaField
-                label="Highlights"
-                value={item.highlights}
-                onChange={(value) => onChange(index, { highlights: value })}
-              />
               <TextField
                 label="Skills"
                 value={item.skills}
@@ -1583,6 +1577,23 @@ function textFromRecord(record: Record<string, unknown>, key: string) {
   return String(value);
 }
 
+function listFromRecord(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  if (Array.isArray(value)) return cleanStringList(value);
+  if (value == null) return [];
+  return cleanStringList(parseLineList(String(value)));
+}
+
+function experienceDescriptionFromRecord(record: Record<string, unknown>) {
+  const description = textFromRecord(record, "description").trim();
+  const descriptionKey = description.toLowerCase();
+  const highlights = listFromRecord(record, "highlights").filter(
+    (highlight) => !descriptionKey.includes(highlight.toLowerCase())
+  );
+
+  return [description, ...highlights].filter(Boolean).join("\n");
+}
+
 function boolFromRecord(record: Record<string, unknown>, key: string) {
   return record[key] === true;
 }
@@ -1609,8 +1620,7 @@ function normalizeExperienceDrafts(values: unknown[]) {
     startDate: textFromRecord(record, "start_date"),
     endDate: textFromRecord(record, "end_date"),
     isCurrent: boolFromRecord(record, "is_current"),
-    description: textFromRecord(record, "description"),
-    highlights: textFromRecord(record, "highlights"),
+    description: experienceDescriptionFromRecord(record),
     skills:
       textFromRecord(record, "skills") ||
       textFromRecord(record, "technologies"),
@@ -1655,7 +1665,6 @@ function emptyExperienceDraft(): ExperienceDraft {
     endDate: "",
     isCurrent: false,
     description: "",
-    highlights: "",
     skills: "",
   };
 }
@@ -1691,7 +1700,6 @@ function experienceDraftToRecord(item: ExperienceDraft) {
   assignCleanText(record, "start_date", item.startDate);
   assignCleanText(record, "end_date", item.endDate);
   assignCleanText(record, "description", item.description);
-  assignCleanList(record, "highlights", parseLineList(item.highlights));
   assignCleanList(record, "skills", parseDelimitedList(item.skills));
   if (hasRecordValues(record)) record.is_current = item.isCurrent;
   return record;
