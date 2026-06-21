@@ -21,7 +21,11 @@ from sqlalchemy.orm import Session, selectinload
 from config import supabase_publishable_key, supabase_url
 from database import make_session_factory
 from models import ResumeProfile, UserResume
-from resume_profile_parser import PARSER_VERSION, parse_resume_pdf
+from resume_profile_parser import (
+    PARSER_VERSION,
+    normalize_school_name,
+    parse_resume_pdf,
+)
 from supabase_jwt import verify_supabase_access_token
 
 router = APIRouter(prefix="/api", tags=["user-resumes"])
@@ -210,6 +214,11 @@ def _profile_json(profile: ResumeProfile) -> dict[str, Any]:
         "experience": profile.experience_json or [],
         "projects": profile.projects_json or [],
         "links": profile.links_json or [],
+        "user_confirmed_at": (
+            profile.user_confirmed_at.isoformat()
+            if getattr(profile, "user_confirmed_at", None)
+            else None
+        ),
     }
 
 
@@ -352,7 +361,86 @@ def set_default_resume(
 
 
 class PatchResumeBody(BaseModel):
-    focus: str = Field("", max_length=200)
+    focus: str | None = Field(None, max_length=200)
+    profile: "ProfilePatchBody | None" = None
+
+
+class ProfilePatchBody(BaseModel):
+    primary_school_name: str | None = Field(None, max_length=300)
+    primary_major: str | None = Field(None, max_length=300)
+    grad_year: int | None = Field(None, ge=1900, le=2200)
+    skills: list[str] = Field(default_factory=list, max_length=100)
+    education: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+    experience: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+    projects: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+    links: list[str] = Field(default_factory=list, max_length=50)
+
+
+def _clean_text(value: str | None) -> str | None:
+    clean = (value or "").strip()
+    return clean or None
+
+
+def _clean_string_list(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = value.strip()
+        key = clean.lower()
+        if not clean or key in seen:
+            continue
+        seen.add(key)
+        out.append(clean)
+    return out
+
+
+def _clean_dict_list(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for value in values:
+        clean: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                continue
+            key_clean = key.strip()
+            if not key_clean:
+                continue
+            if isinstance(item, str):
+                item_clean = item.strip()
+                if item_clean:
+                    clean[key_clean] = item_clean
+            elif isinstance(item, list):
+                strings = [part for part in item if isinstance(part, str)]
+                clean_list = _clean_string_list(strings)
+                if clean_list:
+                    clean[key_clean] = clean_list
+            elif item is not None:
+                clean[key_clean] = item
+        if clean:
+            out.append(clean)
+    return out
+
+
+def _apply_profile_patch(
+    profile: ResumeProfile,
+    body: ProfilePatchBody,
+    *,
+    confirmed_at: datetime | None = None,
+) -> None:
+    school = _clean_text(body.primary_school_name)
+    profile.parse_status = "ready"
+    profile.parse_error = None
+    profile.primary_school_name = school
+    profile.primary_school_normalized = (
+        normalize_school_name(school) if school else None
+    )
+    profile.primary_major = _clean_text(body.primary_major)
+    profile.grad_year = body.grad_year
+    profile.skills = _clean_string_list(body.skills)
+    profile.education_json = _clean_dict_list(body.education)
+    profile.experience_json = _clean_dict_list(body.experience)
+    profile.projects_json = _clean_dict_list(body.projects)
+    profile.links_json = _clean_string_list(body.links)
+    profile.user_confirmed_at = confirmed_at or datetime.now(timezone.utc)
 
 
 @router.patch("/user-resumes/{resume_id}")
@@ -364,14 +452,32 @@ def patch_user_resume(
 ):
     uid = uuid.UUID(user["id"])
     row = session.execute(
-        select(UserResume).where(UserResume.id == resume_id, UserResume.owner_id == uid)
+        select(UserResume)
+        .options(selectinload(UserResume.profile))
+        .where(UserResume.id == resume_id, UserResume.owner_id == uid)
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Resume not found")
-    focus = body.focus.strip()
-    if not focus:
-        focus = "Unassigned"
-    row.focus = focus
+    if body.focus is not None:
+        focus = body.focus.strip()
+        if not focus:
+            focus = "Unassigned"
+        row.focus = focus
+    if body.profile is not None:
+        if row.profile is None:
+            row.profile = ResumeProfile(
+                resume_id=row.id,
+                raw_text=None,
+                raw_text_hash=None,
+                parse_status="ready",
+                parser_version=PARSER_VERSION,
+                skills=[],
+                education_json=[],
+                experience_json=[],
+                projects_json=[],
+                links_json=[],
+            )
+        _apply_profile_patch(row.profile, body.profile)
     session.commit()
     session.refresh(row)
     return {"row": _row_json(row)}

@@ -232,6 +232,9 @@ class ResumeProfile(Base):
         server_default=text("'[]'::jsonb"),
     )
     parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

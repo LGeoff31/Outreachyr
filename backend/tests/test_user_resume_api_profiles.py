@@ -5,7 +5,13 @@ import unittest
 import uuid
 from datetime import datetime, timezone
 
-from user_resume_api import _row_json
+from resume_profile_parser import normalize_school_name
+from user_resume_api import (
+    PatchResumeBody,
+    ProfilePatchBody,
+    _apply_profile_patch,
+    _row_json,
+)
 
 
 class UserResumeApiProfileTests(unittest.TestCase):
@@ -32,6 +38,7 @@ class UserResumeApiProfileTests(unittest.TestCase):
         self.assertNotIn("profile", payload)
 
     def test_row_json_includes_ready_resume_profile(self) -> None:
+        confirmed_at = datetime(2026, 1, 3, tzinfo=timezone.utc)
         profile = types.SimpleNamespace(
             parse_status="ready",
             primary_school_name="University of Waterloo",
@@ -43,6 +50,7 @@ class UserResumeApiProfileTests(unittest.TestCase):
             experience_json=[{"title": "Software Engineer Intern"}],
             projects_json=[{"name": "Distributed Job Queue"}],
             links_json=["https://github.com/geoff"],
+            user_confirmed_at=confirmed_at,
         )
 
         payload = _row_json(self._resume_row(profile=profile))
@@ -56,6 +64,72 @@ class UserResumeApiProfileTests(unittest.TestCase):
         self.assertEqual(
             payload["profile"]["education"],
             [{"school": "University of Waterloo"}],
+        )
+        self.assertEqual(
+            payload["profile"]["user_confirmed_at"],
+            confirmed_at.isoformat(),
+        )
+
+    def test_apply_profile_patch_normalizes_and_confirms_user_edits(self) -> None:
+        profile = types.SimpleNamespace(
+            parse_status="ready",
+            parse_error=None,
+            primary_school_name=None,
+            primary_school_normalized=None,
+            primary_major=None,
+            grad_year=None,
+            skills=[],
+            education_json=[],
+            experience_json=[],
+            projects_json=[],
+            links_json=[],
+            user_confirmed_at=None,
+        )
+        confirmed_at = datetime(2026, 1, 4, tzinfo=timezone.utc)
+        body = ProfilePatchBody(
+            primary_school_name=" University of Waterloo ",
+            primary_major=" Software Engineering ",
+            grad_year=2027,
+            skills=[" Python ", "", "TypeScript", "python"],
+            education=[{"school": "University of Waterloo"}],
+            experience=[{"title": "Software Engineer Intern"}],
+            projects=[{"name": "Distributed Job Queue"}],
+            links=[" https://github.com/geoff ", ""],
+        )
+
+        _apply_profile_patch(profile, body, confirmed_at=confirmed_at)
+
+        self.assertEqual(profile.parse_status, "ready")
+        self.assertIsNone(profile.parse_error)
+        self.assertEqual(profile.primary_school_name, "University of Waterloo")
+        self.assertEqual(
+            profile.primary_school_normalized,
+            normalize_school_name("University of Waterloo"),
+        )
+        self.assertEqual(profile.primary_major, "Software Engineering")
+        self.assertEqual(profile.grad_year, 2027)
+        self.assertEqual(profile.skills, ["Python", "TypeScript"])
+        self.assertEqual(profile.links_json, ["https://github.com/geoff"])
+        self.assertEqual(profile.user_confirmed_at, confirmed_at)
+
+    def test_patch_resume_body_accepts_nested_profile_payload(self) -> None:
+        body = PatchResumeBody(
+            profile={
+                "primary_school_name": "University of Waterloo",
+                "primary_major": "Software Engineering",
+                "grad_year": 2027,
+                "skills": ["Python"],
+                "education": [{"school": "University of Waterloo"}],
+                "experience": [],
+                "projects": [],
+                "links": [],
+            }
+        )
+
+        self.assertIsNotNone(body.profile)
+        self.assertEqual(
+            body.profile.primary_school_name if body.profile else None,
+            "University of Waterloo",
         )
 
 

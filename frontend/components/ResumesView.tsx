@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Pencil,
   FileText,
   Loader2,
   Search,
+  Save,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,13 +22,16 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { AutosizeTextarea } from "@/components/ui/textarea";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   deleteUserResume,
   fetchUserResumeRows,
   resumeApiAuthHeaders,
   uploadUserResumePdf,
+  updateUserResumeProfile,
   type UserResumeProfile,
+  type UserResumeProfilePatch,
   type UserResumeRow,
 } from "@/lib/supabase/userResumes";
 
@@ -99,11 +105,14 @@ export function ResumesView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activePreview, setActivePreview] = useState<ActiveResumePreview | null>(
     null
   );
+  const [editingResume, setEditingResume] = useState<ResumeRecord | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const closeResumePreview = useCallback(() => {
     if (previewBlobUrlRef.current) {
@@ -272,6 +281,8 @@ export function ResumesView({
         }
         if (added.length > 0) {
           setResumes((current) => [...added, ...current]);
+          setEditingResume(added[0]);
+          setProfileError(null);
         }
       } finally {
         setUploading(false);
@@ -295,6 +306,25 @@ export function ResumesView({
 
     setResumes((current) => [...uploadedResumes, ...current]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleSaveProfile(
+    resume: ResumeRecord,
+    profile: UserResumeProfilePatch
+  ) {
+    setSavingProfile(true);
+    setProfileError(null);
+    const { row, error } = await updateUserResumeProfile(resume.id, profile);
+    setSavingProfile(false);
+    if (error || !row) {
+      setProfileError(error?.message ?? "Could not save profile.");
+      return;
+    }
+    const nextResume = rowToResumeRecord(row);
+    setResumes((current) =>
+      current.map((item) => (item.id === nextResume.id ? nextResume : item))
+    );
+    setEditingResume(null);
   }
 
   return (
@@ -381,6 +411,10 @@ export function ResumesView({
                 deleting={deletingId === resume.id}
                 onPreview={(url) => void openResumePreview(resume, url)}
                 onDelete={() => void handleDelete(resume)}
+                onEdit={() => {
+                  setProfileError(null);
+                  setEditingResume(resume);
+                }}
               />
             ))}
           </section>
@@ -407,6 +441,22 @@ export function ResumesView({
             className="relative z-10 h-full w-full rounded-lg border-0 bg-card shadow-xl"
           />
         </div>
+      ) : null}
+
+      {editingResume ? (
+        <ResumeProfileEditor
+          key={editingResume.id}
+          resume={editingResume}
+          saving={savingProfile}
+          error={profileError}
+          onClose={() => {
+            if (!savingProfile) {
+              setEditingResume(null);
+              setProfileError(null);
+            }
+          }}
+          onSave={(profile) => void handleSaveProfile(editingResume, profile)}
+        />
       ) : null}
     </main>
   );
@@ -491,11 +541,13 @@ function ResumeCard({
   deleting,
   onPreview,
   onDelete,
+  onEdit,
 }: {
   resume: ResumeRecord;
   deleting: boolean;
   onPreview: (url?: string) => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const { url, loading } = useResumeThumbnailUrl(resume);
   const canPreview = Boolean(url);
@@ -508,21 +560,33 @@ function ResumeCard({
           <h2 className="min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
             {resume.name}
           </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="shrink-0 rounded-lg text-destructive hover:text-destructive"
-            aria-label={`Delete ${resume.name}`}
-            disabled={deleting}
-            onClick={onDelete}
-          >
-            {deleting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Trash2 aria-hidden className="size-4" />
-            )}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-lg"
+              aria-label={`Edit parsed fields for ${resume.name}`}
+              onClick={onEdit}
+            >
+              <Pencil aria-hidden className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-lg text-destructive hover:text-destructive"
+              aria-label={`Delete ${resume.name}`}
+              disabled={deleting}
+              onClick={onDelete}
+            >
+              {deleting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 aria-hidden className="size-4" />
+              )}
+            </Button>
+          </div>
         </div>
 
         <button
@@ -566,4 +630,318 @@ function ResumeCard({
       </CardContent>
     </Card>
   );
+}
+
+function ResumeProfileEditor({
+  resume,
+  saving,
+  error,
+  onClose,
+  onSave,
+}: {
+  resume: ResumeRecord;
+  saving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (profile: UserResumeProfilePatch) => void;
+}) {
+  const profile = resume.profile;
+  const [school, setSchool] = useState(profile?.primary_school_name ?? "");
+  const [major, setMajor] = useState(profile?.primary_major ?? "");
+  const [gradYear, setGradYear] = useState(
+    profile?.grad_year ? String(profile.grad_year) : ""
+  );
+  const [skills, setSkills] = useState((profile?.skills ?? []).join(", "));
+  const [education, setEducation] = useState(
+    formatProfileEntries(profile?.education ?? [], [
+      "school",
+      "degree",
+      "major",
+      "end_year",
+    ])
+  );
+  const [experience, setExperience] = useState(
+    formatProfileEntries(profile?.experience ?? [], [
+      "title",
+      "company",
+      "description",
+    ])
+  );
+  const [projects, setProjects] = useState(
+    formatProfileEntries(profile?.projects ?? [], [
+      "name",
+      "technologies",
+      "description",
+    ])
+  );
+  const [links, setLinks] = useState((profile?.links ?? []).join("\n"));
+
+  const parsedGradYear = parseGradYear(gradYear);
+  const gradYearInvalid = gradYear.trim().length > 0 && parsedGradYear == null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close profile editor"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="resume-profile-editor-title"
+        className="relative z-10 flex max-h-[min(46rem,calc(100vh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="resume-profile-editor-title"
+              className="truncate text-base font-semibold text-foreground"
+            >
+              Review parsed fields
+            </h2>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {resume.name}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            disabled={saving}
+            onClick={onClose}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="block min-w-0 sm:col-span-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                School
+              </span>
+              <Input
+                value={school}
+                onChange={(event) => setSchool(event.target.value)}
+                className="mt-2 h-10 rounded-xl text-sm"
+              />
+            </label>
+            <label className="block min-w-0 sm:col-span-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Major
+              </span>
+              <Input
+                value={major}
+                onChange={(event) => setMajor(event.target.value)}
+                className="mt-2 h-10 rounded-xl text-sm"
+              />
+            </label>
+            <label className="block min-w-0 sm:col-span-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Grad year
+              </span>
+              <Input
+                value={gradYear}
+                inputMode="numeric"
+                onChange={(event) => setGradYear(event.target.value)}
+                aria-invalid={gradYearInvalid || undefined}
+                className="mt-2 h-10 rounded-xl text-sm"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-4">
+            <label className="block min-w-0">
+              <span className="text-xs font-medium text-muted-foreground">
+                Skills
+              </span>
+              <Input
+                value={skills}
+                onChange={(event) => setSkills(event.target.value)}
+                className="mt-2 h-10 rounded-xl text-sm"
+              />
+            </label>
+            <EditorTextarea
+              label="Education"
+              value={education}
+              onChange={setEducation}
+            />
+            <EditorTextarea
+              label="Experience"
+              value={experience}
+              onChange={setExperience}
+            />
+            <EditorTextarea
+              label="Projects"
+              value={projects}
+              onChange={setProjects}
+            />
+            <EditorTextarea label="Links" value={links} onChange={setLinks} />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-h-5 text-sm">
+            {error ? (
+              <p className="text-destructive" role="alert">
+                {error}
+              </p>
+            ) : gradYearInvalid ? (
+              <p className="text-destructive" role="alert">
+                Enter a valid 4-digit year.
+              </p>
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              disabled={saving}
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="rounded-xl"
+              disabled={saving || gradYearInvalid}
+              onClick={() =>
+                onSave({
+                  primary_school_name: cleanNullable(school),
+                  primary_major: cleanNullable(major),
+                  grad_year: parsedGradYear,
+                  skills: parseDelimitedList(skills),
+                  education: parseProfileEntries(education, [
+                    "school",
+                    "degree",
+                    "major",
+                    "end_year",
+                  ]),
+                  experience: parseProfileEntries(experience, [
+                    "title",
+                    "company",
+                    "description",
+                  ]),
+                  projects: parseProfileEntries(projects, [
+                    "name",
+                    "technologies",
+                    "description",
+                  ]),
+                  links: parseLineList(links),
+                })
+              }
+            >
+              {saving ? (
+                <Loader2
+                  className="size-4 animate-spin"
+                  data-icon="inline-start"
+                  aria-hidden
+                />
+              ) : (
+                <Save data-icon="inline-start" aria-hidden />
+              )}
+              Save fields
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditorTextarea({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <AutosizeTextarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 rounded-xl text-sm leading-relaxed"
+      />
+    </label>
+  );
+}
+
+function cleanNullable(value: string) {
+  const clean = value.trim();
+  return clean.length > 0 ? clean : null;
+}
+
+function parseGradYear(value: string) {
+  const clean = value.trim();
+  if (!clean) return null;
+  if (!/^\d{4}$/.test(clean)) return null;
+  const year = Number(clean);
+  return year >= 1900 && year <= 2200 ? year : null;
+}
+
+function parseDelimitedList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseLineList(value: string) {
+  return value
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseProfileEntries(value: string, keys: string[]) {
+  return parseLineList(value).map((line) => {
+    const parts = line.split("|").map((part) => part.trim());
+    const record: Record<string, unknown> = {};
+    keys.forEach((key, index) => {
+      const part = parts[index];
+      if (!part) return;
+      if (key === "end_year") {
+        const year = parseGradYear(part);
+        if (year != null) record[key] = year;
+        return;
+      }
+      if (key === "technologies") {
+        record[key] = parseDelimitedList(part);
+        return;
+      }
+      record[key] = part;
+    });
+    return record;
+  });
+}
+
+function formatProfileEntries(values: unknown[], keys: string[]) {
+  return values.map((value) => formatProfileEntry(value, keys)).join("\n");
+}
+
+function formatProfileEntry(value: unknown, keys: string[]) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return String(value ?? "");
+  }
+  const record = value as Record<string, unknown>;
+  const parts = keys
+    .map((key) => formatProfilePart(record[key]))
+    .filter(Boolean);
+  return parts.join(" | ");
+}
+
+function formatProfilePart(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter(Boolean).join(", ");
+  }
+  if (value == null) return "";
+  return String(value);
 }
