@@ -12,7 +12,15 @@ from urllib.parse import quote
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
@@ -243,28 +251,81 @@ def _row_json(r: UserResume) -> dict[str, Any]:
     return payload
 
 
-def _build_resume_profile_row(resume_id: uuid.UUID, data: bytes) -> ResumeProfile:
-    parsed = parse_resume_pdf(data)
-    if parsed.parse_status == "failed":
-        logger.warning("Resume profile parsing failed for resume %s", resume_id)
+def _pending_resume_profile_row(resume_id: uuid.UUID) -> ResumeProfile:
     return ResumeProfile(
         resume_id=resume_id,
-        raw_text=parsed.raw_text,
-        raw_text_hash=parsed.raw_text_hash,
-        parse_status=parsed.parse_status,
-        parser_version=parsed.parser_version,
-        parse_error=parsed.parse_error,
-        primary_school_name=parsed.primary_school_name,
-        primary_school_normalized=parsed.primary_school_normalized,
-        primary_major=parsed.primary_major,
-        grad_year=parsed.grad_year,
-        skills=parsed.skills,
-        education_json=parsed.education,
-        experience_json=parsed.experience,
-        projects_json=parsed.projects,
-        links_json=parsed.links,
-        parsed_at=datetime.now(timezone.utc),
+        raw_text=None,
+        raw_text_hash=None,
+        parse_status="pending",
+        parser_version=PARSER_VERSION,
+        skills=[],
+        education_json=[],
+        experience_json=[],
+        projects_json=[],
+        links_json=[],
     )
+
+
+def _apply_parsed_resume_profile(
+    profile: ResumeProfile,
+    parsed,
+) -> None:
+    if parsed.parse_status == "failed":
+        logger.warning("Resume profile parsing failed for resume %s", profile.resume_id)
+    profile.raw_text = parsed.raw_text
+    profile.raw_text_hash = parsed.raw_text_hash
+    profile.parse_status = parsed.parse_status
+    profile.parser_version = parsed.parser_version
+    profile.parse_error = parsed.parse_error
+    profile.primary_school_name = parsed.primary_school_name
+    profile.primary_school_normalized = parsed.primary_school_normalized
+    profile.primary_major = parsed.primary_major
+    profile.grad_year = parsed.grad_year
+    profile.skills = parsed.skills
+    profile.education_json = parsed.education
+    profile.experience_json = parsed.experience
+    profile.projects_json = parsed.projects
+    profile.links_json = parsed.links
+    profile.parsed_at = datetime.now(timezone.utc)
+
+
+def _build_resume_profile_row(resume_id: uuid.UUID, data: bytes) -> ResumeProfile:
+    parsed = parse_resume_pdf(data)
+    profile = _pending_resume_profile_row(resume_id)
+    _apply_parsed_resume_profile(profile, parsed)
+    return profile
+
+
+def _parse_resume_profile_background(resume_id: uuid.UUID, data: bytes) -> None:
+    parsed = parse_resume_pdf(data)
+    try:
+        factory = _session_factory()
+    except RuntimeError as e:
+        logger.warning("Resume profile parse not saved (database): %s", e)
+        return
+
+    session = factory()
+    try:
+        profile = session.get(ResumeProfile, resume_id)
+        if profile is None:
+            logger.warning(
+                "Resume profile parse skipped; resume profile %s was not found",
+                resume_id,
+            )
+            return
+        if getattr(profile, "user_confirmed_at", None):
+            logger.info(
+                "Resume profile parse skipped; resume profile %s is already confirmed",
+                resume_id,
+            )
+            return
+        _apply_parsed_resume_profile(profile, parsed)
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to save parsed resume profile for resume %s", resume_id)
+    finally:
+        session.close()
 
 
 @router.get("/user-resumes")
@@ -291,6 +352,7 @@ async def upload_user_resume(
     request: Request,
     user: Annotated[dict, Depends(require_supabase_user)],
     session: Annotated[Session, Depends(get_db_session)],
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -321,7 +383,7 @@ async def upload_user_resume(
         is_default=False,
         status="Ready",
     )
-    row.profile = _build_resume_profile_row(row.id, data)
+    row.profile = _pending_resume_profile_row(row.id)
     session.add(row)
     try:
         session.commit()
@@ -331,6 +393,7 @@ async def upload_user_resume(
         storage_remove_object(access_token, object_path)
         raise
 
+    background_tasks.add_task(_parse_resume_profile_background, row.id, data)
     return {"row": _row_json(row)}
 
 

@@ -85,6 +85,7 @@ function resumeProfileSummary(profile?: UserResumeProfile) {
   if (!profile) return null;
   if (profile.parse_status === "failed") return "Profile parse failed";
   if (profile.parse_status !== "ready") return "Profile parsing";
+  if (!profile.user_confirmed_at) return "Review parsed fields";
   const parts = [
     profile.primary_school_name,
     profile.primary_major,
@@ -114,6 +115,9 @@ export function ResumesView({
   );
   const [editingResume, setEditingResume] = useState<ResumeRecord | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [pendingReviewResumeId, setPendingReviewResumeId] = useState<
+    string | null
+  >(null);
 
   const closeResumePreview = useCallback(() => {
     if (previewBlobUrlRef.current) {
@@ -178,6 +182,43 @@ export function ResumesView({
     };
   }, [activePreview, closeResumePreview]);
 
+  const hasPendingProfiles = useMemo(
+    () => resumes.some((resume) => resume.profile?.parse_status === "pending"),
+    [resumes]
+  );
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    if (!hasPendingProfiles && !pendingReviewResumeId) return;
+
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const { rows, error } = await fetchUserResumeRows();
+        if (cancelled || error) return;
+        const nextResumes = rows.map(rowToResumeRecord);
+        setResumes(nextResumes);
+        if (!pendingReviewResumeId) return;
+        const reviewResume = nextResumes.find(
+          (resume) => resume.id === pendingReviewResumeId
+        );
+        if (
+          reviewResume?.profile &&
+          reviewResume.profile.parse_status !== "pending"
+        ) {
+          setEditingResume(reviewResume);
+          setPendingReviewResumeId(null);
+          setProfileError(null);
+        }
+      })();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hasPendingProfiles, pendingReviewResumeId]);
+
   const visibleResumes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const nextResumes = resumes.filter((resume) => {
@@ -202,6 +243,9 @@ export function ResumesView({
     setActionError(null);
     if (activePreview?.resumeId === resume.id) {
       closeResumePreview();
+    }
+    if (pendingReviewResumeId === resume.id) {
+      setPendingReviewResumeId(null);
     }
     if (!isSupabaseConfigured()) {
       if (resume.previewUrl) {
@@ -282,7 +326,11 @@ export function ResumesView({
         }
         if (added.length > 0) {
           setResumes((current) => [...added, ...current]);
-          setEditingResume(added[0]);
+          if (added[0].profile?.parse_status === "pending") {
+            setPendingReviewResumeId(added[0].id);
+          } else {
+            setEditingResume(added[0]);
+          }
           setProfileError(null);
         }
       } finally {
@@ -325,6 +373,7 @@ export function ResumesView({
     setResumes((current) =>
       current.map((item) => (item.id === nextResume.id ? nextResume : item))
     );
+    setPendingReviewResumeId(null);
     setEditingResume(null);
   }
 
@@ -414,6 +463,7 @@ export function ResumesView({
                 onDelete={() => void handleDelete(resume)}
                 onEdit={() => {
                   setProfileError(null);
+                  setPendingReviewResumeId(null);
                   setEditingResume(resume);
                 }}
               />
