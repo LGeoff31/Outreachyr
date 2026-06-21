@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
+  ExternalLink,
   FileText,
   Loader2,
   Search,
@@ -19,7 +20,7 @@ import {
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -71,6 +72,7 @@ import {
 type Recipient = {
   email?: string;
   greeting_name?: string;
+  linkedin_url?: string;
 };
 
 type RecipientRemovalTarget = {
@@ -1293,6 +1295,7 @@ function RecipientReview({
   removeDisabled: boolean;
 }) {
   const name = recipient.greeting_name || recipientNameFromEmail(recipient.email);
+  const linkedinUrl = recipient.linkedin_url?.trim();
   const mergedSubject = resolveMergeFields(subject, name, company);
   const snippet = resolveMergeFields(bodyText, name, company);
 
@@ -1319,6 +1322,21 @@ function RecipientReview({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {linkedinUrl ? (
+            <a
+              href={linkedinUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "h-8 rounded-lg px-2.5 text-xs"
+              )}
+              aria-label={`Open LinkedIn profile for ${name || "recruiter"}`}
+            >
+              <ExternalLink className="size-3.5" aria-hidden />
+              LinkedIn
+            </a>
+          ) : null}
           <Button
             type="button"
             variant="outline"
