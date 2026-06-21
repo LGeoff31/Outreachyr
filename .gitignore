@@ -7,8 +7,10 @@ __pycache__/
 *.pyc
 .venv/
 /backend/.venv/
+/backend/.venv-*/
 .uv-cache/
 /backend/.uv-cache/
+/backend/.uv-cache-*/
 test.py
 
 # Next.js

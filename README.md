@@ -5,6 +5,17 @@ This repo is split into separately deployable app roots:
 - `frontend/` contains the Next.js UI.
 - `backend/` contains the FastAPI API and outreach email code.
 
+## Local dev
+
+After installing each app's dependencies, start both apps from the repo root with one command:
+
+```sh
+npm run dev
+```
+
+This starts the backend on `http://127.0.0.1:5050` and the frontend on `http://localhost:3000`.
+When the repo is shared between Windows and WSL, the root dev command keeps the backend Python environments and uv caches separate so Linux does not overwrite Windows' `.venv`.
+
 ## Backend
 
 1. Install uv: <https://docs.astral.sh/uv/getting-started/installation/>
