@@ -23,12 +23,6 @@ export function SiteFooter() {
           className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1"
         >
           <Link
-            href="/pricing"
-            className="font-medium text-foreground/80 underline-offset-4 transition hover:text-foreground hover:underline"
-          >
-            Pricing
-          </Link>
-          <Link
             href="/privacy"
             className="font-medium text-foreground/80 underline-offset-4 transition hover:text-foreground hover:underline"
           >
