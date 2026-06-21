@@ -105,7 +105,7 @@ def create_checkout(user: dict = Depends(require_supabase_user)):
                 f"{base}/dashboard/billing/success"
                 "?session_id={CHECKOUT_SESSION_ID}"
             ),
-            cancel_url=f"{base}/pricing?checkout=cancelled",
+            cancel_url=f"{base}/?checkout=cancelled",
         )
     except stripe.StripeError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e

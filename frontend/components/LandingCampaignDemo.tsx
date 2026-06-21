@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
-  Lock,
   MousePointer2,
   Search,
   SendHorizontal,
@@ -27,6 +26,9 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+
+const DEMO_RESUME_NAME = "Geoffrey-Lee-Resume.pdf";
+const DEMO_RESUME_SIZE_KB = 142;
 
 const DEMO_COMPANY = "Nvidia";
 
@@ -174,6 +176,7 @@ export function LandingCampaignDemo() {
   const [focusRecipient, setFocusRecipient] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [resumeAttached, setResumeAttached] = useState(false);
   const [cursorPt, setCursorPt] = useState<{ x: number; y: number } | null>(
     null
   );
@@ -304,6 +307,7 @@ export function LandingCampaignDemo() {
       if (reduceMotion) {
         setTypedSubject(DEMO_SUBJECT);
         setTypedBody(DEMO_BODY);
+        setResumeAttached(true);
         setActiveField(null);
         setStage("review");
         await sleep(120);
@@ -343,6 +347,7 @@ export function LandingCampaignDemo() {
 
       setTypedSubject("");
       setTypedBody("");
+      setResumeAttached(false);
       setActiveField("subject");
       setHighlightDryRun(false);
       setStage("compose");
@@ -366,6 +371,10 @@ export function LandingCampaignDemo() {
         await sleep(11);
       }
       await sleep(350);
+      if (cancelled) return;
+
+      setResumeAttached(true);
+      await sleep(400);
       if (cancelled) return;
 
       setActiveField(null);
@@ -537,16 +546,16 @@ export function LandingCampaignDemo() {
               </div>
               <Separator />
 
-              <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+              <div className="px-5 py-4">
                 <p className="text-xs font-medium text-muted-foreground">
                   Message
                 </p>
-                <div className="relative mt-2 min-h-0 flex-1">
+                <div className="relative mt-2">
                   <Textarea
                     readOnly
                     tabIndex={-1}
                     value={typedBody}
-                    className="h-[calc(100%-0px)] min-h-[7.5rem] cursor-default resize-none rounded-xl border-border bg-muted/30 font-mono text-xs leading-relaxed sm:text-sm"
+                    className="min-h-[6.5rem] cursor-default resize-none rounded-xl border-border bg-muted/30 font-mono text-xs leading-relaxed sm:text-sm"
                     aria-hidden
                   />
                   {activeField === "body" ? (
@@ -556,27 +565,33 @@ export function LandingCampaignDemo() {
                   ) : null}
                 </div>
               </div>
+              <Separator />
 
-              <div className="mt-auto border-t border-border bg-muted/20 px-5 py-3">
+              <div className="px-5 py-4">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Resume <span className="font-normal">(optional)</span>
+                </p>
                 <div
-                  ref={dryRunWrapRef}
-                  className="inline-block w-full sm:w-auto"
+                  className={cn(
+                    "mt-2 transition-all duration-300",
+                    resumeAttached
+                      ? "opacity-100"
+                      : "opacity-40"
+                  )}
                 >
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className={cn(
-                      "min-h-10 w-full rounded-xl transition-shadow sm:w-auto",
-                      highlightDryRun &&
-                        "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                    )}
-                    aria-hidden
-                    tabIndex={-1}
-                  >
-                    <Search aria-hidden className="size-4" />
-                    Fetch recruiters
-                  </Button>
+                  <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
+                      <FileText aria-hidden="true" className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {DEMO_RESUME_NAME}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {DEMO_RESUME_SIZE_KB} KB
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -597,7 +612,7 @@ export function LandingCampaignDemo() {
                   {DEMO_RECIPIENTS.length} personalized emails
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Scroll through every recruiter preview—then send when
+                  Preview your emails, then send when
                   you&apos;re ready.
                 </p>
               </div>
@@ -645,6 +660,17 @@ export function LandingCampaignDemo() {
                           <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-[0.75rem] leading-relaxed text-muted-foreground">
                             {recipientBodies[i]}
                           </p>
+                          {resumeAttached ? (
+                            <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem]">
+                              <FileText
+                                className="size-3.5 shrink-0 text-primary"
+                                aria-hidden
+                              />
+                              <span className="truncate font-medium text-foreground">
+                                {DEMO_RESUME_NAME}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -654,45 +680,54 @@ export function LandingCampaignDemo() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
-              <Lock aria-hidden="true" className="size-5 text-primary" />
-              {stage === "compose"
-                ? "Fetch recruiters from any company."
-                : "Nothing sends until you confirm."}
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div ref={sendWrapRef} className="inline-flex w-full sm:w-auto">
-                <Button
-                  type="button"
-                  size="lg"
-                  className={cn(
-                    "pointer-events-none min-h-11 w-full gap-2 rounded-xl px-5 transition-all duration-300 sm:w-auto",
-                    sending && "opacity-95",
-                    sent &&
-                      "bg-primary shadow-lg shadow-primary/30 ring-2 ring-primary/40 ring-offset-2 ring-offset-background"
-                  )}
-                  aria-hidden
-                  tabIndex={-1}
-                >
-                  {sending ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" aria-hidden />
-                      Sending…
-                    </>
-                  ) : sent ? (
-                    <>
-                      <CheckCircle2 className="size-4" aria-hidden />
-                      Sent
-                    </>
-                  ) : (
-                    <>
-                      <SendHorizontal className="size-4" aria-hidden />
-                      Send campaign
-                    </>
-                  )}
-                </Button>
-              </div>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div ref={dryRunWrapRef} className="inline-flex w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                className={cn(
+                  "pointer-events-none min-h-11 w-full gap-2 rounded-xl px-5 sm:w-auto",
+                  highlightDryRun &&
+                    "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                )}
+                aria-hidden
+                tabIndex={-1}
+              >
+                <Search className="size-4" aria-hidden />
+                Fetch recruiters
+              </Button>
+            </div>
+            <div ref={sendWrapRef} className="inline-flex w-full sm:w-auto">
+              <Button
+                type="button"
+                size="lg"
+                className={cn(
+                  "pointer-events-none min-h-11 w-full gap-2 rounded-xl px-5 transition-all duration-300 sm:w-auto",
+                  sending && "opacity-95",
+                  sent &&
+                    "bg-primary shadow-lg shadow-primary/30 ring-2 ring-primary/40 ring-offset-2 ring-offset-background"
+                )}
+                aria-hidden
+                tabIndex={-1}
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Sending…
+                  </>
+                ) : sent ? (
+                  <>
+                    <CheckCircle2 className="size-4" aria-hidden />
+                    Sent
+                  </>
+                ) : (
+                  <>
+                    <SendHorizontal className="size-4" aria-hidden />
+                    Send campaign
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </CardContent>

@@ -4,7 +4,7 @@ const points = [
   {
     title: "LinkedIn messages don't work",
     description:
-      "Recruiters get thousands of InMails. Yours is easy to ignore. Email from a real inbox cuts through the noise.",
+      "Recruiters get thousands of LinkedIn spam. Yours is easy to ignore. Email from a real inbox cuts through the noise.",
     icon: MessageSquareOff,
     contrast: true,
   },
@@ -32,8 +32,8 @@ export function LandingDifferentiators() {
     >
       <div className="mx-auto max-w-[90rem]">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-medium text-muted-foreground">
-            What makes us different
+          <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+            Why email wins
           </p>
           <h2
             id="differentiators-heading"
@@ -42,13 +42,9 @@ export function LandingDifferentiators() {
             Skip LinkedIn spam. Send emails that get{" "}
             <span className="text-primary">replies.</span>
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-            We help you reach verified recruiters with personalized outreach,
-            not another message lost in a LinkedIn inbox.
-          </p>
         </div>
 
-        <ul className="mx-auto mt-12 grid max-w-5xl gap-5 sm:grid-cols-3 sm:gap-6">
+        <ul className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-3 sm:gap-6">
           {points.map((point) => {
             const Icon = point.icon;
             return (

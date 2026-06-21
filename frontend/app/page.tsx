@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils";
 export default function HomePage() {
   return (
     <div className="overflow-x-hidden bg-background text-foreground">
-      <section className="relative overflow-hidden">
-        <div className="mx-auto grid w-full max-w-[90rem] items-center gap-14 px-5 pb-24 pt-14 sm:px-8 sm:pb-32 sm:pt-16 lg:min-h-[calc(100svh-13rem)] lg:grid-cols-[0.9fr_1.05fr] lg:gap-16 lg:pb-28 lg:py-0">
+      <section className="relative flex min-h-[calc(100svh-4rem)] items-center overflow-hidden">
+        <div className="mx-auto grid w-full max-w-[90rem] items-center gap-10 px-5 py-10 sm:px-8 sm:gap-14 lg:grid-cols-[0.9fr_1.05fr] lg:gap-16">
           <div className="min-w-0 max-w-[calc(100vw-2.5rem)] sm:max-w-2xl">
             <h1 className="text-balance text-4xl font-semibold leading-[1.04] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
               Reach the right <span className="text-primary">recruiters.</span>
