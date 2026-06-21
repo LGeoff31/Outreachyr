@@ -11,6 +11,7 @@ import {
   Loader2,
   Search,
   SendHorizontal,
+  Trash2,
   Upload,
   UsersRound,
   X,
@@ -389,6 +390,39 @@ export function OutreachForm() {
     }
   }, [applyLibraryResume, savedResumes]);
 
+  const removeRecipientAt = useCallback(
+    (index: number) => {
+      const recipient = recipients[index];
+      if (!recipient) return;
+
+      const name =
+        recipient.greeting_name || recipientNameFromEmail(recipient.email);
+      const label = recipient.email || name || "this recipient";
+      if (
+        !window.confirm(
+          `Remove ${label} from this campaign? This recipient will not receive the email.`
+        )
+      ) {
+        return;
+      }
+
+      const nextRecipients = recipients.filter((_, i) => i !== index);
+      setRecipients(nextRecipients);
+      setSendSuccess(false);
+      setSendQueued(false);
+      setErr(false);
+      setErrorDetails(null);
+      setMessage(
+        nextRecipients.length === 0
+          ? `Removed ${label}. No recipients remain.`
+          : `Removed ${label}. ${nextRecipients.length} recipient${
+              nextRecipients.length === 1 ? "" : "s"
+            } remaining.`
+      );
+    },
+    [recipients]
+  );
+
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
       if (!companyReady) {
@@ -432,6 +466,9 @@ export function OutreachForm() {
       fd.append("test_mode", testMode ? "true" : "false");
       fd.append("subject", subject);
       fd.append("body_text", bodyText);
+      if (!dryRun && recipients.length > 0) {
+        fd.append("selected_recipients", JSON.stringify(recipients));
+      }
       if (file) fd.append("resume", file, file.name);
       const libraryRow = selectedSavedResumeId
         ? savedResumes.find((r) => r.id === selectedSavedResumeId)
@@ -550,6 +587,7 @@ export function OutreachForm() {
       company,
       companyReady,
       file,
+      recipients,
       savedResumes,
       selectedSavedResumeId,
       subject,
@@ -769,6 +807,7 @@ export function OutreachForm() {
               setTestMode(enabled);
               setRecipients([]);
             }}
+            onRemoveRecipient={removeRecipientAt}
             loading={loading}
             err={err}
             message={message}
@@ -924,6 +963,7 @@ function ReviewPanel({
   resumePreviewUrl,
   testMode,
   onTestModeChange,
+  onRemoveRecipient,
   loading,
   err,
   message,
@@ -940,6 +980,7 @@ function ReviewPanel({
   resumePreviewUrl: string | null;
   testMode: boolean;
   onTestModeChange: (enabled: boolean) => void;
+  onRemoveRecipient: (index: number) => void;
   loading: "preview" | "send" | null;
   err: boolean;
   message: string;
@@ -1055,6 +1096,8 @@ function ReviewPanel({
                   company={company}
                   subject={subject}
                   onViewFull={() => setFullPreview(recipient)}
+                  onRemove={() => onRemoveRecipient(index)}
+                  removeDisabled={loading !== null || actionsLocked}
                 />
               ))}
             </div>
@@ -1120,12 +1163,16 @@ function RecipientReview({
   company,
   subject,
   onViewFull,
+  onRemove,
+  removeDisabled,
 }: {
   recipient: Recipient;
   bodyText: string;
   company: string;
   subject: string;
   onViewFull: () => void;
+  onRemove: () => void;
+  removeDisabled: boolean;
 }) {
   const name = recipient.greeting_name || recipientNameFromEmail(recipient.email);
   const mergedSubject = resolveMergeFields(subject, name, company);
@@ -1153,16 +1200,29 @@ function RecipientReview({
             {snippet}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
-          onClick={onViewFull}
-        >
-          <Eye className="size-3.5" aria-hidden />
-          View full
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-lg px-2.5 text-xs"
+            onClick={onViewFull}
+          >
+            <Eye className="size-3.5" aria-hidden />
+            View full
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="icon-sm"
+            disabled={removeDisabled}
+            aria-label={`Remove ${recipient.email || name || "recipient"}`}
+            title="Remove recipient"
+            onClick={onRemove}
+          >
+            <Trash2 className="size-3.5" aria-hidden />
+          </Button>
+        </div>
       </div>
     </article>
   );
