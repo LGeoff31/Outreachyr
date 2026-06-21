@@ -28,6 +28,10 @@ from config import (
 )
 from gmail_send_oauth import ensure_fresh_access_token, send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
+from recipient_selection import (
+    normalize_selected_recipients,
+    parse_selected_recipients_json,
+)
 from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
 from campaign_api import persist_sent_campaign, router as campaign_router
 from billing_api import router as billing_router
@@ -359,11 +363,29 @@ def _run_send(
     resume_bytes: bytes | None,
     resume_filename: str,
     resume_storage_path: str | None = None,
+    selected_people: list[tuple[str, str]] | None = None,
     resume_profile_school: str | None = None,
     resume_profile_school_normalized: str | None = None,
 ):
     company = company.strip()
-    if test_mode:
+    if not dry_run and selected_people is not None:
+        if not selected_people:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "Select at least one recipient before sending.",
+                },
+            )
+        if test_mode:
+            company = company or "Sample Company (test mode)"
+        elif not company:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Enter a company name."},
+            )
+        people = selected_people
+    elif test_mode:
         company = company or "Sample Company (test mode)"
         people = outreach.test_recipients()
     else:
@@ -427,6 +449,7 @@ class SendJsonRequest(BaseModel):
     subject: str = Field("")
     body_text: str = Field("")
     resume_storage_path: str = Field("")
+    selected_recipients: list[dict[str, str]] | None = Field(default=None)
     resume_profile_school: str = Field("")
     resume_profile_school_normalized: str = Field("")
 
@@ -592,9 +615,19 @@ async def api_send_multipart(
     body_text: str = Form(""),
     resume: UploadFile | None = File(None),
     resume_storage_path: str = Form(""),
+    selected_recipients: str = Form(""),
     resume_profile_school: str = Form(""),
     resume_profile_school_normalized: str = Form(""),
 ):
+    selected_people, selected_error = parse_selected_recipients_json(
+        selected_recipients
+    )
+    if selected_error:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": selected_error},
+        )
+
     rbytes: bytes | None = None
     rname = "resume.pdf"
     if resume is not None and resume.filename:
@@ -610,6 +643,7 @@ async def api_send_multipart(
         resume_bytes=rbytes,
         resume_filename=rname,
         resume_storage_path=resume_storage_path.strip() or None,
+        selected_people=selected_people,
         resume_profile_school=resume_profile_school.strip() or None,
         resume_profile_school_normalized=(
             resume_profile_school_normalized.strip() or None
@@ -619,6 +653,15 @@ async def api_send_multipart(
 
 @app.post("/api/send/json")
 def api_send_json(request: Request, body: SendJsonRequest):
+    selected_people, selected_error = normalize_selected_recipients(
+        body.selected_recipients
+    )
+    if selected_error:
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": selected_error},
+        )
+
     return _run_send(
         request,
         company=body.company,
@@ -629,6 +672,7 @@ def api_send_json(request: Request, body: SendJsonRequest):
         resume_bytes=None,
         resume_filename="resume.pdf",
         resume_storage_path=body.resume_storage_path.strip() or None,
+        selected_people=selected_people,
         resume_profile_school=body.resume_profile_school.strip() or None,
         resume_profile_school_normalized=(
             body.resume_profile_school_normalized.strip() or None

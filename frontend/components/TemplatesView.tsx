@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Empty,
   EmptyDescription,
@@ -58,6 +59,8 @@ export function TemplatesView() {
   const [formBody, setFormBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [templateToDelete, setTemplateToDelete] =
+    useState<EmailTemplateRow | null>(null);
 
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -173,18 +176,14 @@ export function TemplatesView() {
     setEditor(null);
   }
 
-  async function handleDelete(row: EmailTemplateRow) {
-    if (
-      !window.confirm(
-        `Delete this template? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+  async function confirmDeleteTemplate() {
+    const row = templateToDelete;
+    if (!row || deletingId) return;
     setActionError(null);
     setDeletingId(row.id);
     const { error } = await deleteEmailTemplate(row.id);
     setDeletingId(null);
+    setTemplateToDelete(null);
     if (error) {
       setActionError(error.message);
       return;
@@ -301,7 +300,7 @@ export function TemplatesView() {
                         className="rounded-lg text-destructive hover:text-destructive"
                         aria-label="Delete template"
                         disabled={deletingId === row.id}
-                        onClick={() => void handleDelete(row)}
+                        onClick={() => setTemplateToDelete(row)}
                       >
                         {deletingId === row.id ? (
                           <Loader2 className="size-4 animate-spin" />
@@ -421,6 +420,20 @@ export function TemplatesView() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(templateToDelete)}
+        title="Delete template?"
+        description="Delete this template? This cannot be undone."
+        confirmLabel="Delete template"
+        confirming={Boolean(
+          templateToDelete && deletingId === templateToDelete.id
+        )}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) setTemplateToDelete(null);
+        }}
+        onConfirm={() => void confirmDeleteTemplate()}
+      />
     </main>
   );
 }
