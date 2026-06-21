@@ -20,7 +20,6 @@ const planFeatures = [
   "Personalized emails for every recipient",
   "Hit recruiter inboxes, not spam",
   "Send from your Gmail account",
-  "Saved templates and resumes",
   "Full history tracking",
 ];
 
@@ -68,18 +67,18 @@ export function PricingSection({
   const content = (
     <>
       <div className="mx-auto max-w-2xl text-center">
-        <Badge
+        {/* <Badge
           variant="secondary"
           className="mb-4 rounded-lg px-3 py-1 text-xs font-semibold"
         >
           Simple pricing
-        </Badge>
+        </Badge> */}
         {embedded ? (
           <h2
             id={headingId}
             className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl"
           >
-            Three free campaigns. Then{" "}
+            3 <span className="text-primary">Free</span>  campaigns. Then{" "}
             <span className="text-primary">$5</span> for unlimited.
           </h2>
         ) : (
@@ -91,10 +90,6 @@ export function PricingSection({
             <span className="text-primary">$5</span> for unlimited.
           </h1>
         )}
-        <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-          Verified recruiter emails and personalized outreach — not another
-          LinkedIn message that gets ignored.
-        </p>
       </div>
 
       <div className="mx-auto mt-14 max-w-md">

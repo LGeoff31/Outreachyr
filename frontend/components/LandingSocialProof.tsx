@@ -20,7 +20,7 @@ function LogoRow({ ariaHidden }: { ariaHidden?: boolean }) {
       {COMPANIES.map((company) => (
         <div
           key={company.name}
-          className="flex h-28 w-56 shrink-0 items-center justify-center sm:h-36 sm:w-72"
+          className="flex h-28 w-56 shrink-0 justify-center sm:h-36 sm:w-72"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
