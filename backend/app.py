@@ -364,6 +364,8 @@ def _run_send(
     resume_filename: str,
     resume_storage_path: str | None = None,
     selected_people: list[tuple[str, str]] | None = None,
+    resume_profile_school: str | None = None,
+    resume_profile_school_normalized: str | None = None,
 ):
     company = company.strip()
     if not dry_run and selected_people is not None:
@@ -394,7 +396,11 @@ def _run_send(
             )
 
         try:
-            people = outreach.discover(company)
+            people = outreach.discover(
+                company,
+                school_name=resume_profile_school,
+                school_normalized=resume_profile_school_normalized,
+            )
         except RuntimeError as e:
             return JSONResponse(
                 status_code=502,
@@ -444,6 +450,8 @@ class SendJsonRequest(BaseModel):
     body_text: str = Field("")
     resume_storage_path: str = Field("")
     selected_recipients: list[dict[str, str]] | None = Field(default=None)
+    resume_profile_school: str = Field("")
+    resume_profile_school_normalized: str = Field("")
 
 
 class GoogleSessionRequest(BaseModel):
@@ -608,6 +616,8 @@ async def api_send_multipart(
     resume: UploadFile | None = File(None),
     resume_storage_path: str = Form(""),
     selected_recipients: str = Form(""),
+    resume_profile_school: str = Form(""),
+    resume_profile_school_normalized: str = Form(""),
 ):
     selected_people, selected_error = parse_selected_recipients_json(
         selected_recipients
@@ -634,6 +644,10 @@ async def api_send_multipart(
         resume_filename=rname,
         resume_storage_path=resume_storage_path.strip() or None,
         selected_people=selected_people,
+        resume_profile_school=resume_profile_school.strip() or None,
+        resume_profile_school_normalized=(
+            resume_profile_school_normalized.strip() or None
+        ),
     )
 
 
@@ -659,6 +673,10 @@ def api_send_json(request: Request, body: SendJsonRequest):
         resume_filename="resume.pdf",
         resume_storage_path=body.resume_storage_path.strip() or None,
         selected_people=selected_people,
+        resume_profile_school=body.resume_profile_school.strip() or None,
+        resume_profile_school_normalized=(
+            body.resume_profile_school_normalized.strip() or None
+        ),
     )
 
 

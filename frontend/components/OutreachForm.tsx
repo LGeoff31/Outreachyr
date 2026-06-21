@@ -89,12 +89,12 @@ type SendResponse = ApiErrorBody & {
 
 const placeholderCompany = "Palantir";
 const placeholderSubject =
-  "Fall 2026 Software Engineering Opportunities at Palantir";
+  "Palantir Summer 2027 Software Engineering Co-op";
 const placeholderMessage = `Hi {{first_name}},
 
 I'm a CS student interested in building impactful software at {{company}}.
 
-I'm reaching out to learn more about opportunities for Fall 2026.
+I'm reaching out to learn more about opportunities for Summer 2027.
 
 Best,
 Geoffrey`;
@@ -484,6 +484,21 @@ export function OutreachForm() {
       if (libraryRow?.resume_storage_path) {
         fd.append("resume_storage_path", libraryRow.resume_storage_path);
       }
+      const confirmedProfile = libraryRow?.profile?.user_confirmed_at
+        ? libraryRow.profile
+        : undefined;
+      if (confirmedProfile?.primary_school_name) {
+        fd.append(
+          "resume_profile_school",
+          confirmedProfile.primary_school_name
+        );
+      }
+      if (confirmedProfile?.primary_school_normalized) {
+        fd.append(
+          "resume_profile_school_normalized",
+          confirmedProfile.primary_school_normalized
+        );
+      }
 
       let sendHeaders: Record<string, string> = {};
       if (isSupabaseConfigured()) {
@@ -656,83 +671,71 @@ export function OutreachForm() {
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(22rem,0.85fr)_minmax(34rem,1.15fr)]">
           <Card className="min-w-0 overflow-hidden rounded-2xl bg-card shadow-sm">
             <CardContent className="space-y-5 px-5 py-5">
-              <Field data-invalid={companyInvalid || undefined}>
-                <FieldLabel
-                  htmlFor="company"
-                  className="text-xs font-medium text-muted-foreground"
-                >
-                  Company
-                </FieldLabel>
-                <div className="relative mt-2">
-                  <Input
-                    id="company"
-                    list="company-options"
-                    value={company}
-                    onChange={(event) => {
-                      setCompany(event.target.value);
-                      setRecipients([]);
-                    }}
-                    placeholder={placeholderCompany}
-                    className="h-10 rounded-xl pr-11 text-sm font-medium"
-                    autoComplete="organization"
-                    aria-invalid={companyInvalid || undefined}
-                  />
-                  {companyReady && (
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-primary"
-                    />
-                  )}
-                </div>
-                <datalist id="company-options">
-                  {hints.map((hint) => (
-                    <option key={hint} value={hint} />
-                  ))}
-                </datalist>
-              </Field>
+            <div className="relative">
+  <Input
+    id="company"
+    list="company-options"
+    value={company}
+    onChange={(event) => {
+      setCompany(event.target.value);
+      setRecipients([]);
+    }}
+    placeholder={placeholderCompany}
+    className="h-10 rounded-xl pr-11 text-sm font-medium"
+    autoComplete="organization"
+    aria-invalid={companyInvalid || undefined}
+  />
+  {companyReady && (
+    <CheckCircle2
+      aria-hidden="true"
+      className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-primary"
+    />
+  )}
+  <label
+    htmlFor="company"
+    className="absolute left-3 top-0 -translate-y-1/2 text-xs font-medium text-muted-foreground bg-card px-1"
+  >
+    Company
+  </label>
+  <datalist id="company-options">
+    {hints.map((hint) => (
+      <option key={hint} value={hint} />
+    ))}
+  </datalist>
+</div>
 
-              <Field>
-                <FieldLabel
-                  htmlFor="subject"
-                  className="text-xs font-medium text-muted-foreground"
-                >
-                  Subject
-                </FieldLabel>
-                <Input
-                  id="subject"
-                  value={subject}
-                  onChange={(event) => setSubject(event.target.value)}
-                  placeholder={placeholderSubject}
-                  className="mt-2 h-10 rounded-xl text-sm font-medium"
-                />
-              </Field>
+              <div className="relative">
+  <Input
+    id="subject"
+    value={subject}
+    onChange={(event) => setSubject(event.target.value)}
+    placeholder={placeholderSubject}
+    className="h-10 rounded-xl text-sm font-medium"
+  />
+  <label
+    htmlFor="subject"
+    className="absolute left-3 top-0 -translate-y-1/2 text-xs font-medium text-muted-foreground bg-card px-1"
+  >
+    Subject
+  </label>
+</div>
 
-              <Field>
-                <FieldLabel
-                  htmlFor="body"
-                  className="text-xs font-medium text-muted-foreground"
-                >
-                  Message
-                </FieldLabel>
-                <AutosizeTextarea
-                  id="body"
-                  value={bodyText}
-                  onChange={(event) => setBodyText(event.target.value)}
-                  placeholder={placeholderMessage}
-                  className="mt-2 rounded-xl text-sm leading-relaxed"
-                />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Use{" "}
-                  <code className="font-mono text-[0.7rem] text-foreground/80">
-                    {"{{first_name}}"}
-                  </code>{" "}
-                  and{" "}
-                  <code className="font-mono text-[0.7rem] text-foreground/80">
-                    {"{{company}}"}
-                  </code>{" "}
-                  for personalization.
-                </p>
-              </Field>
+<div className="relative">
+  <AutosizeTextarea
+    id="body"
+    value={bodyText}
+    onChange={(event) => setBodyText(event.target.value)}
+    placeholder={placeholderMessage}
+    className="rounded-xl text-sm leading-relaxed"
+    rows={6}
+  />
+  <label
+    htmlFor="body"
+    className="absolute left-3 top-0 -translate-y-1/2 text-xs font-medium text-muted-foreground bg-card px-1"
+  >
+    Message
+  </label>
+</div>
 
               <Field>
                 <FieldLabel

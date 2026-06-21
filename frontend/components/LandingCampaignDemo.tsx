@@ -27,7 +27,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-const DEMO_RESUME_NAME = "Geoffrey-Lee-Resume.pdf";
+const DEMO_RESUME_NAME = "resume_geoffreylee.pdf";
 const DEMO_RESUME_SIZE_KB = 142;
 
 const DEMO_COMPANY = "Nvidia";

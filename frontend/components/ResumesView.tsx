@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
+  Pencil,
   FileText,
   Loader2,
+  Plus,
+  RefreshCw,
   Search,
+  Save,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -20,12 +27,17 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { AutosizeTextarea } from "@/components/ui/textarea";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   deleteUserResume,
   fetchUserResumeRows,
   resumeApiAuthHeaders,
+  retryUserResumeProfileParse,
   uploadUserResumePdf,
+  updateUserResumeProfile,
+  type UserResumeProfile,
+  type UserResumeProfilePatch,
   type UserResumeRow,
 } from "@/lib/supabase/userResumes";
 
@@ -37,6 +49,7 @@ type ResumeRecord = {
   updatedAt: string;
   storagePath?: string;
   previewUrl?: string;
+  profile?: UserResumeProfile;
 };
 
 type ActiveResumePreview = { name: string; url: string; resumeId: string };
@@ -69,7 +82,27 @@ function rowToResumeRecord(row: UserResumeRow): ResumeRecord {
     usedInCampaigns: row.used_in_campaigns,
     updatedAt: row.updated_at,
     storagePath: row.resume_storage_path,
+    profile: row.profile,
   };
+}
+
+function resumeProfileSummary(profile?: UserResumeProfile) {
+  if (!profile) return null;
+  if (profile.parse_status === "failed") return "Profile parse failed";
+  if (profile.parse_status !== "ready") return "Profile parsing";
+  if (!profile.user_confirmed_at) return "Review parsed fields";
+  const parts = [
+    profile.primary_school_name,
+    profile.primary_major,
+    profile.grad_year ? String(profile.grad_year) : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" - ") : null;
+}
+
+function resumeProfileParseFailureDetail(profile?: UserResumeProfile) {
+  const error = profile?.parse_error?.trim();
+  if (!error) return null;
+  return error.length > 240 ? `${error.slice(0, 237)}...` : error;
 }
 
 export function ResumesView({
@@ -85,6 +118,8 @@ export function ResumesView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [retryingProfile, setRetryingProfile] = useState(false);
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resumeToDelete, setResumeToDelete] = useState<ResumeRecord | null>(
@@ -93,6 +128,11 @@ export function ResumesView({
   const [activePreview, setActivePreview] = useState<ActiveResumePreview | null>(
     null
   );
+  const [editingResume, setEditingResume] = useState<ResumeRecord | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [pendingReviewResumeId, setPendingReviewResumeId] = useState<
+    string | null
+  >(null);
 
   const closeResumePreview = useCallback(() => {
     if (previewBlobUrlRef.current) {
@@ -157,6 +197,50 @@ export function ResumesView({
     };
   }, [activePreview, closeResumePreview]);
 
+  const hasPendingProfiles = useMemo(
+    () => resumes.some((resume) => resume.profile?.parse_status === "pending"),
+    [resumes]
+  );
+  const editingResumeId = editingResume?.id ?? null;
+  const activeReviewResumeId =
+    pendingReviewResumeId ??
+    (editingResume?.profile?.parse_status === "pending" ? editingResume.id : null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    if (!hasPendingProfiles && !activeReviewResumeId) return;
+
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const { rows, error } = await fetchUserResumeRows();
+        if (cancelled || error) return;
+        const nextResumes = rows.map(rowToResumeRecord);
+        setResumes(nextResumes);
+        if (!activeReviewResumeId) return;
+        const reviewResume = nextResumes.find(
+          (resume) => resume.id === activeReviewResumeId
+        );
+        if (!reviewResume?.profile) return;
+        if (
+          reviewResume.id === editingResumeId ||
+          reviewResume.profile.parse_status !== "pending"
+        ) {
+          setEditingResume(reviewResume);
+        }
+        if (reviewResume.profile.parse_status !== "pending") {
+          setPendingReviewResumeId(null);
+          setProfileError(null);
+        }
+      })();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeReviewResumeId, editingResumeId, hasPendingProfiles]);
+
   const visibleResumes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const nextResumes = resumes.filter((resume) => {
@@ -176,6 +260,9 @@ export function ResumesView({
     setActionError(null);
     if (activePreview?.resumeId === resume.id) {
       closeResumePreview();
+    }
+    if (pendingReviewResumeId === resume.id) {
+      setPendingReviewResumeId(null);
     }
     if (!isSupabaseConfigured()) {
       if (resume.previewUrl) {
@@ -258,6 +345,13 @@ export function ResumesView({
         }
         if (added.length > 0) {
           setResumes((current) => [...added, ...current]);
+          setEditingResume(added[0]);
+          if (added[0].profile?.parse_status === "pending") {
+            setPendingReviewResumeId(added[0].id);
+          } else {
+            setPendingReviewResumeId(null);
+          }
+          setProfileError(null);
         }
       } finally {
         setUploading(false);
@@ -281,6 +375,45 @@ export function ResumesView({
 
     setResumes((current) => [...uploadedResumes, ...current]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleSaveProfile(
+    resume: ResumeRecord,
+    profile: UserResumeProfilePatch
+  ) {
+    setSavingProfile(true);
+    setProfileError(null);
+    const { row, error } = await updateUserResumeProfile(resume.id, profile);
+    setSavingProfile(false);
+    if (error || !row) {
+      setProfileError(error?.message ?? "Could not save profile.");
+      return;
+    }
+    const nextResume = rowToResumeRecord(row);
+    setResumes((current) =>
+      current.map((item) => (item.id === nextResume.id ? nextResume : item))
+    );
+    setPendingReviewResumeId(null);
+    setEditingResume(null);
+  }
+
+  async function handleRetryProfileParse(resume: ResumeRecord) {
+    setRetryingProfile(true);
+    setProfileError(null);
+    const { row, error } = await retryUserResumeProfileParse(resume.id);
+    setRetryingProfile(false);
+    if (error || !row) {
+      setProfileError(error?.message ?? "Could not retry parsing.");
+      return;
+    }
+    const nextResume = rowToResumeRecord(row);
+    setResumes((current) =>
+      current.map((item) => (item.id === nextResume.id ? nextResume : item))
+    );
+    setEditingResume(nextResume);
+    if (nextResume.profile?.parse_status === "pending") {
+      setPendingReviewResumeId(nextResume.id);
+    }
   }
 
   return (
@@ -366,7 +499,14 @@ export function ResumesView({
                 resume={resume}
                 deleting={deletingId === resume.id}
                 onPreview={(url) => void openResumePreview(resume, url)}
-                onDelete={() => setResumeToDelete(resume)}
+                 onDelete={() => void handleDelete(resume)}
+                onEdit={() => {
+                  setProfileError(null);
+                  setPendingReviewResumeId(
+                    resume.profile?.parse_status === "pending" ? resume.id : null
+                  );
+                  setEditingResume(resume);
+                }}
               />
             ))}
           </section>
@@ -412,6 +552,23 @@ export function ResumesView({
         }}
         onConfirm={() => void confirmDeleteResume()}
       />
+      {editingResume ? (
+        <ResumeProfileEditor
+          key={`${editingResume.id}-${editingResume.profile?.parse_status ?? "none"}`}
+          resume={editingResume}
+          saving={savingProfile}
+          retrying={retryingProfile}
+          error={profileError}
+          onClose={() => {
+            if (!savingProfile && !retryingProfile) {
+              setEditingResume(null);
+              setProfileError(null);
+            }
+          }}
+          onRetry={() => void handleRetryProfileParse(editingResume)}
+          onSave={(profile) => void handleSaveProfile(editingResume, profile)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -495,14 +652,17 @@ function ResumeCard({
   deleting,
   onPreview,
   onDelete,
+  onEdit,
 }: {
   resume: ResumeRecord;
   deleting: boolean;
   onPreview: (url?: string) => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const { url, loading } = useResumeThumbnailUrl(resume);
   const canPreview = Boolean(url);
+  const profileSummary = resumeProfileSummary(resume.profile);
 
   return (
     <Card className="flex h-full flex-col gap-0 rounded-2xl bg-card py-0 shadow-sm">
@@ -511,21 +671,33 @@ function ResumeCard({
           <h2 className="min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
             {resume.name}
           </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="shrink-0 rounded-lg text-destructive hover:text-destructive"
-            aria-label={`Delete ${resume.name}`}
-            disabled={deleting}
-            onClick={onDelete}
-          >
-            {deleting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Trash2 aria-hidden className="size-4" />
-            )}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-lg"
+              aria-label={`Edit parsed fields for ${resume.name}`}
+              onClick={onEdit}
+            >
+              <Pencil aria-hidden className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-lg text-destructive hover:text-destructive"
+              aria-label={`Delete ${resume.name}`}
+              disabled={deleting}
+              onClick={onDelete}
+            >
+              {deleting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 aria-hidden className="size-4" />
+              )}
+            </Button>
+          </div>
         </div>
 
         <button
@@ -561,7 +733,1015 @@ function ResumeCard({
         <p className="shrink-0 pt-1 text-xs text-muted-foreground">
           Updated {formatUpdatedAt(resume.updatedAt)}
         </p>
+        {profileSummary ? (
+          <p className="shrink-0 text-xs text-muted-foreground">
+            {profileSummary}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
+}
+
+type EducationDraft = {
+  id: string;
+  school: string;
+  degree: string;
+  major: string;
+  startYear: string;
+  endYear: string;
+  isCurrent: boolean;
+};
+
+type ExperienceDraft = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  description: string;
+  highlights: string;
+  skills: string;
+};
+
+type ProjectDraft = {
+  id: string;
+  name: string;
+  description: string;
+  skills: string;
+  links: string;
+  startDate: string;
+  endDate: string;
+};
+
+let profileDraftId = 0;
+
+function nextProfileDraftId() {
+  profileDraftId += 1;
+  return `profile-draft-${profileDraftId}`;
+}
+
+function ResumeProfileEditor({
+  resume,
+  saving,
+  retrying,
+  error,
+  onClose,
+  onRetry,
+  onSave,
+}: {
+  resume: ResumeRecord;
+  saving: boolean;
+  retrying: boolean;
+  error: string | null;
+  onClose: () => void;
+  onRetry: () => void;
+  onSave: (profile: UserResumeProfilePatch) => void;
+}) {
+  const profile = resume.profile;
+  const [school, setSchool] = useState(profile?.primary_school_name ?? "");
+  const [major, setMajor] = useState(profile?.primary_major ?? "");
+  const [gradYear, setGradYear] = useState(
+    profile?.grad_year ? String(profile.grad_year) : ""
+  );
+  const [skills, setSkills] = useState(() =>
+    cleanStringList(profile?.skills ?? [])
+  );
+  const [skillInput, setSkillInput] = useState("");
+  const [links, setLinks] = useState(() => cleanStringList(profile?.links ?? []));
+  const [linkInput, setLinkInput] = useState("");
+  const [education, setEducation] = useState(() =>
+    normalizeEducationDrafts(profile?.education ?? [])
+  );
+  const [experience, setExperience] = useState(() =>
+    normalizeExperienceDrafts(profile?.experience ?? [])
+  );
+  const [projects, setProjects] = useState(() =>
+    normalizeProjectDrafts(profile?.projects ?? [])
+  );
+
+  const parsedGradYear = parseGradYear(gradYear);
+  const gradYearInvalid = gradYear.trim().length > 0 && parsedGradYear == null;
+  const isParsing = profile?.parse_status === "pending";
+  const parsingFailed = profile?.parse_status === "failed";
+  const parseFailureDetail =
+    parsingFailed ? resumeProfileParseFailureDetail(profile) : null;
+
+  function saveProfile() {
+    onSave({
+      primary_school_name: cleanNullable(school),
+      primary_major: cleanNullable(major),
+      grad_year: parsedGradYear,
+      skills: cleanStringList(skills),
+      education: education.map(educationDraftToRecord).filter(hasRecordValues),
+      experience: experience.map(experienceDraftToRecord).filter(hasRecordValues),
+      projects: projects.map(projectDraftToRecord).filter(hasRecordValues),
+      links: cleanStringList(links),
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close profile editor"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="resume-profile-editor-title"
+        className="relative z-10 flex max-h-[min(48rem,calc(100vh-1.5rem))] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="resume-profile-editor-title"
+              className="truncate text-base font-semibold text-foreground"
+            >
+              {isParsing ? "Parsing resume" : "Review parsed fields"}
+            </h2>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {resume.name}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            disabled={saving}
+            onClick={onClose}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          {isParsing ? (
+            <div
+              className="flex min-h-72 flex-col items-center justify-center gap-3 text-center"
+              aria-live="polite"
+            >
+              <Loader2
+                className="size-8 animate-spin text-primary"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Parsing resume...
+                </p>
+                <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
+                  We will show the extracted fields here as soon as parsing
+                  finishes.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {parsingFailed ? (
+                <Alert variant="destructive" className="mb-5">
+                  <AlertCircle aria-hidden="true" />
+                  <AlertTitle>Automatic parsing failed</AlertTitle>
+                  <AlertDescription>
+                    <p>
+                      No parsed fields were saved. Fill them manually and save to
+                      confirm this resume.
+                    </p>
+                    {parseFailureDetail ? (
+                      <p className="break-words text-xs">
+                        Reason: {parseFailureDetail}
+                      </p>
+                    ) : null}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <TextField label="School" value={school} onChange={setSchool} />
+                <TextField label="Major" value={major} onChange={setMajor} />
+                <TextField
+                  label="Grad year"
+                  value={gradYear}
+                  inputMode="numeric"
+                  invalid={gradYearInvalid}
+                  onChange={setGradYear}
+                />
+              </div>
+
+              <div className="mt-5 grid gap-5">
+                <StringListEditor
+                  label="Skills"
+                  values={skills}
+                  inputValue={skillInput}
+                  addLabel="Add skill"
+                  onInputChange={setSkillInput}
+                  onAdd={(value) => {
+                    setSkills((current) => appendUniqueString(current, value));
+                    setSkillInput("");
+                  }}
+                  onRemove={(index) =>
+                    setSkills((current) => removeAtIndex(current, index))
+                  }
+                />
+
+                <EducationEditor
+                  items={education}
+                  onAdd={() =>
+                    setEducation((current) => [
+                      ...current,
+                      emptyEducationDraft(),
+                    ])
+                  }
+                  onRemove={(index) =>
+                    setEducation((current) => removeAtIndex(current, index))
+                  }
+                  onChange={(index, patch) =>
+                    setEducation((current) =>
+                      updateDraftAtIndex(current, index, patch)
+                    )
+                  }
+                />
+
+                <ExperienceEditor
+                  items={experience}
+                  onAdd={() =>
+                    setExperience((current) => [
+                      ...current,
+                      emptyExperienceDraft(),
+                    ])
+                  }
+                  onRemove={(index) =>
+                    setExperience((current) => removeAtIndex(current, index))
+                  }
+                  onChange={(index, patch) =>
+                    setExperience((current) =>
+                      updateDraftAtIndex(current, index, patch)
+                    )
+                  }
+                />
+
+                <ProjectEditor
+                  items={projects}
+                  onAdd={() =>
+                    setProjects((current) => [...current, emptyProjectDraft()])
+                  }
+                  onRemove={(index) =>
+                    setProjects((current) => removeAtIndex(current, index))
+                  }
+                  onChange={(index, patch) =>
+                    setProjects((current) =>
+                      updateDraftAtIndex(current, index, patch)
+                    )
+                  }
+                />
+
+                <StringListEditor
+                  label="Links"
+                  values={links}
+                  inputValue={linkInput}
+                  addLabel="Add link"
+                  onInputChange={setLinkInput}
+                  onAdd={(value) => {
+                    setLinks((current) => appendUniqueString(current, value));
+                    setLinkInput("");
+                  }}
+                  onRemove={(index) =>
+                    setLinks((current) => removeAtIndex(current, index))
+                  }
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-h-5 text-sm">
+            {error ? (
+              <p className="text-destructive" role="alert">
+                {error}
+              </p>
+            ) : gradYearInvalid ? (
+              <p className="text-destructive" role="alert">
+                Enter a valid 4-digit year.
+              </p>
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              disabled={saving || retrying}
+              onClick={onClose}
+            >
+              {isParsing ? "Close" : "Cancel"}
+            </Button>
+            {isParsing ? null : (
+              <>
+                {parsingFailed ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    disabled={saving || retrying}
+                    onClick={onRetry}
+                  >
+                    {retrying ? (
+                      <Loader2
+                        className="size-4 animate-spin"
+                        data-icon="inline-start"
+                        aria-hidden
+                      />
+                    ) : (
+                      <RefreshCw data-icon="inline-start" aria-hidden />
+                    )}
+                    Retry parsing
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  className="rounded-xl"
+                  disabled={saving || retrying || gradYearInvalid}
+                  onClick={saveProfile}
+                >
+                  {saving ? (
+                    <Loader2
+                      className="size-4 animate-spin"
+                      data-icon="inline-start"
+                      aria-hidden
+                    />
+                  ) : (
+                    <Save data-icon="inline-start" aria-hidden />
+                  )}
+                  Save fields
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({
+  title,
+  count,
+  addLabel,
+  onAdd,
+}: {
+  title: string;
+  count: number;
+  addLabel?: string;
+  onAdd?: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">{count} saved</p>
+      </div>
+      {addLabel && onAdd ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 rounded-xl"
+          onClick={onAdd}
+        >
+          <Plus data-icon="inline-start" aria-hidden />
+          {addLabel}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  inputMode,
+  invalid,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  inputMode?: "numeric";
+  invalid?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <Input
+        value={value}
+        inputMode={inputMode}
+        aria-invalid={invalid || undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-10 rounded-xl text-sm"
+      />
+    </label>
+  );
+}
+
+function TextareaField({
+  label,
+  value,
+  rows = 2,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  rows?: number;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <AutosizeTextarea
+        value={value}
+        rows={rows}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 rounded-xl text-sm leading-relaxed"
+      />
+    </label>
+  );
+}
+
+function StringListEditor({
+  label,
+  values,
+  inputValue,
+  addLabel,
+  onInputChange,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  values: string[];
+  inputValue: string;
+  addLabel: string;
+  onInputChange: (value: string) => void;
+  onAdd: (value: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title={label}
+        count={values.length}
+      />
+      {values.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {values.map((value, index) => (
+            <span
+              key={`${value}-${index}`}
+              className="inline-flex max-w-full items-center gap-1 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground"
+            >
+              <span className="truncate">{value}</span>
+              <button
+                type="button"
+                className="rounded-md p-0.5 text-muted-foreground hover:text-foreground"
+                aria-label={`Remove ${value}`}
+                onClick={() => onRemove(index)}
+              >
+                <X aria-hidden className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <Input
+          value={inputValue}
+          onChange={(event) => onInputChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onAdd(inputValue);
+            }
+          }}
+          className="h-10 rounded-xl text-sm"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => onAdd(inputValue)}
+        >
+          <Plus data-icon="inline-start" aria-hidden />
+          Add
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function EducationEditor({
+  items,
+  onAdd,
+  onRemove,
+  onChange,
+}: {
+  items: EducationDraft[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<EducationDraft>) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title="Education"
+        count={items.length}
+        addLabel="Add school"
+        onAdd={onAdd}
+      />
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-border bg-background/40 p-4"
+          >
+            <ItemHeader
+              title={item.school || "Education"}
+              onRemove={() => onRemove(index)}
+            />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <TextField
+                label="School"
+                value={item.school}
+                onChange={(value) => onChange(index, { school: value })}
+              />
+              <TextField
+                label="Degree"
+                value={item.degree}
+                onChange={(value) => onChange(index, { degree: value })}
+              />
+              <TextField
+                label="Major"
+                value={item.major}
+                onChange={(value) => onChange(index, { major: value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Start"
+                  value={item.startYear}
+                  inputMode="numeric"
+                  onChange={(value) => onChange(index, { startYear: value })}
+                />
+                <TextField
+                  label="End"
+                  value={item.endYear}
+                  inputMode="numeric"
+                  onChange={(value) => onChange(index, { endYear: value })}
+                />
+              </div>
+            </div>
+            <CheckboxField
+              label="Current"
+              checked={item.isCurrent}
+              onChange={(value) => onChange(index, { isCurrent: value })}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ExperienceEditor({
+  items,
+  onAdd,
+  onRemove,
+  onChange,
+}: {
+  items: ExperienceDraft[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<ExperienceDraft>) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title="Experience"
+        count={items.length}
+        addLabel="Add role"
+        onAdd={onAdd}
+      />
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-border bg-background/40 p-4"
+          >
+            <ItemHeader
+              title={formatTitleSubtitle(item.title, item.company) || "Experience"}
+              onRemove={() => onRemove(index)}
+            />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <TextField
+                label="Title"
+                value={item.title}
+                onChange={(value) => onChange(index, { title: value })}
+              />
+              <TextField
+                label="Company"
+                value={item.company}
+                onChange={(value) => onChange(index, { company: value })}
+              />
+              <TextField
+                label="Location"
+                value={item.location}
+                onChange={(value) => onChange(index, { location: value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Start"
+                  value={item.startDate}
+                  onChange={(value) => onChange(index, { startDate: value })}
+                />
+                <TextField
+                  label="End"
+                  value={item.endDate}
+                  onChange={(value) => onChange(index, { endDate: value })}
+                />
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3">
+              <TextareaField
+                label="Description"
+                value={item.description}
+                onChange={(value) => onChange(index, { description: value })}
+              />
+              <TextareaField
+                label="Highlights"
+                value={item.highlights}
+                onChange={(value) => onChange(index, { highlights: value })}
+              />
+              <TextField
+                label="Skills"
+                value={item.skills}
+                onChange={(value) => onChange(index, { skills: value })}
+              />
+            </div>
+            <CheckboxField
+              label="Current"
+              checked={item.isCurrent}
+              onChange={(value) => onChange(index, { isCurrent: value })}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectEditor({
+  items,
+  onAdd,
+  onRemove,
+  onChange,
+}: {
+  items: ProjectDraft[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<ProjectDraft>) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title="Projects"
+        count={items.length}
+        addLabel="Add project"
+        onAdd={onAdd}
+      />
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-border bg-background/40 p-4"
+          >
+            <ItemHeader
+              title={item.name || "Project"}
+              onRemove={() => onRemove(index)}
+            />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <TextField
+                label="Name"
+                value={item.name}
+                onChange={(value) => onChange(index, { name: value })}
+              />
+              <TextField
+                label="Skills"
+                value={item.skills}
+                onChange={(value) => onChange(index, { skills: value })}
+              />
+              <TextField
+                label="Start"
+                value={item.startDate}
+                onChange={(value) => onChange(index, { startDate: value })}
+              />
+              <TextField
+                label="End"
+                value={item.endDate}
+                onChange={(value) => onChange(index, { endDate: value })}
+              />
+            </div>
+            <div className="mt-3 grid gap-3">
+              <TextareaField
+                label="Description"
+                value={item.description}
+                onChange={(value) => onChange(index, { description: value })}
+              />
+              <TextareaField
+                label="Links"
+                value={item.links}
+                onChange={(value) => onChange(index, { links: value })}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ItemHeader({
+  title,
+  onRemove,
+}: {
+  title: string;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <h4 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        {title}
+      </h4>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0 rounded-lg text-destructive hover:text-destructive"
+        aria-label={`Remove ${title}`}
+        onClick={onRemove}
+      >
+        <Trash2 aria-hidden className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+function CheckboxField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="mt-3 flex w-fit items-center gap-2 text-xs font-medium text-muted-foreground">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-4 rounded border-border"
+      />
+      {label}
+    </label>
+  );
+}
+
+function cleanNullable(value: string) {
+  const clean = value.trim();
+  return clean.length > 0 ? clean : null;
+}
+
+function parseGradYear(value: string) {
+  const clean = value.trim();
+  if (!clean) return null;
+  if (!/^\d{4}$/.test(clean)) return null;
+  const year = Number(clean);
+  return year >= 1900 && year <= 2200 ? year : null;
+}
+
+function parseDelimitedList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseLineList(value: string) {
+  return value
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function cleanStringList(values: unknown[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const clean = String(value ?? "").trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+  }
+  return out;
+}
+
+function appendUniqueString(values: string[], value: string) {
+  return cleanStringList([...values, value]);
+}
+
+function removeAtIndex<T>(values: T[], index: number) {
+  return values.filter((_, itemIndex) => itemIndex !== index);
+}
+
+function updateDraftAtIndex<T>(values: T[], index: number, patch: Partial<T>) {
+  return values.map((item, itemIndex) =>
+    itemIndex === index ? { ...item, ...patch } : item
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function textFromRecord(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (value == null) return "";
+  return String(value);
+}
+
+function boolFromRecord(record: Record<string, unknown>, key: string) {
+  return record[key] === true;
+}
+
+function normalizeEducationDrafts(values: unknown[]) {
+  const drafts = values.filter(isRecord).map((record) => ({
+    id: nextProfileDraftId(),
+    school: textFromRecord(record, "school"),
+    degree: textFromRecord(record, "degree"),
+    major: textFromRecord(record, "major"),
+    startYear: textFromRecord(record, "start_year"),
+    endYear: textFromRecord(record, "end_year"),
+    isCurrent: boolFromRecord(record, "is_current"),
+  }));
+  return drafts.length > 0 ? drafts : [];
+}
+
+function normalizeExperienceDrafts(values: unknown[]) {
+  const drafts = values.filter(isRecord).map((record) => ({
+    id: nextProfileDraftId(),
+    title: textFromRecord(record, "title"),
+    company: textFromRecord(record, "company"),
+    location: textFromRecord(record, "location"),
+    startDate: textFromRecord(record, "start_date"),
+    endDate: textFromRecord(record, "end_date"),
+    isCurrent: boolFromRecord(record, "is_current"),
+    description: textFromRecord(record, "description"),
+    highlights: textFromRecord(record, "highlights"),
+    skills:
+      textFromRecord(record, "skills") ||
+      textFromRecord(record, "technologies"),
+  }));
+  return drafts.length > 0 ? drafts : [];
+}
+
+function normalizeProjectDrafts(values: unknown[]) {
+  const drafts = values.filter(isRecord).map((record) => ({
+    id: nextProfileDraftId(),
+    name: textFromRecord(record, "name"),
+    description: textFromRecord(record, "description"),
+    skills:
+      textFromRecord(record, "skills") ||
+      textFromRecord(record, "technologies"),
+    links: textFromRecord(record, "links"),
+    startDate: textFromRecord(record, "start_date"),
+    endDate: textFromRecord(record, "end_date"),
+  }));
+  return drafts.length > 0 ? drafts : [];
+}
+
+function emptyEducationDraft(): EducationDraft {
+  return {
+    id: nextProfileDraftId(),
+    school: "",
+    degree: "",
+    major: "",
+    startYear: "",
+    endYear: "",
+    isCurrent: false,
+  };
+}
+
+function emptyExperienceDraft(): ExperienceDraft {
+  return {
+    id: nextProfileDraftId(),
+    title: "",
+    company: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+    isCurrent: false,
+    description: "",
+    highlights: "",
+    skills: "",
+  };
+}
+
+function emptyProjectDraft(): ProjectDraft {
+  return {
+    id: nextProfileDraftId(),
+    name: "",
+    description: "",
+    skills: "",
+    links: "",
+    startDate: "",
+    endDate: "",
+  };
+}
+
+function educationDraftToRecord(item: EducationDraft) {
+  const record: Record<string, unknown> = {};
+  assignCleanText(record, "school", item.school);
+  assignCleanText(record, "degree", item.degree);
+  assignCleanText(record, "major", item.major);
+  assignCleanYear(record, "start_year", item.startYear);
+  assignCleanYear(record, "end_year", item.endYear);
+  if (hasRecordValues(record)) record.is_current = item.isCurrent;
+  return record;
+}
+
+function experienceDraftToRecord(item: ExperienceDraft) {
+  const record: Record<string, unknown> = {};
+  assignCleanText(record, "title", item.title);
+  assignCleanText(record, "company", item.company);
+  assignCleanText(record, "location", item.location);
+  assignCleanText(record, "start_date", item.startDate);
+  assignCleanText(record, "end_date", item.endDate);
+  assignCleanText(record, "description", item.description);
+  assignCleanList(record, "highlights", parseLineList(item.highlights));
+  assignCleanList(record, "skills", parseDelimitedList(item.skills));
+  if (hasRecordValues(record)) record.is_current = item.isCurrent;
+  return record;
+}
+
+function projectDraftToRecord(item: ProjectDraft) {
+  const record: Record<string, unknown> = {};
+  assignCleanText(record, "name", item.name);
+  assignCleanText(record, "description", item.description);
+  assignCleanText(record, "start_date", item.startDate);
+  assignCleanText(record, "end_date", item.endDate);
+  assignCleanList(record, "skills", parseDelimitedList(item.skills));
+  assignCleanList(record, "links", parseLineList(item.links));
+  return record;
+}
+
+function assignCleanText(
+  record: Record<string, unknown>,
+  key: string,
+  value: string
+) {
+  const clean = cleanNullable(value);
+  if (clean) record[key] = clean;
+}
+
+function assignCleanYear(
+  record: Record<string, unknown>,
+  key: string,
+  value: string
+) {
+  const year = parseGradYear(value);
+  if (year != null) record[key] = year;
+}
+
+function assignCleanList(
+  record: Record<string, unknown>,
+  key: string,
+  values: string[]
+) {
+  const clean = cleanStringList(values);
+  if (clean.length > 0) record[key] = clean;
+}
+
+function hasRecordValues(record: Record<string, unknown>) {
+  return Object.keys(record).length > 0;
+}
+
+function formatTitleSubtitle(title: string, subtitle: string) {
+  const cleanTitle = title.trim();
+  const cleanSubtitle = subtitle.trim();
+  if (cleanTitle && cleanSubtitle) return `${cleanTitle} - ${cleanSubtitle}`;
+  return cleanTitle || cleanSubtitle;
 }

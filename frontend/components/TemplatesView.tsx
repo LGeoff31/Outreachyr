@@ -370,8 +370,8 @@ export function TemplatesView() {
                 Stored in your account; you can apply this from New campaign.
               </p>
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-              <label className="block space-y-2">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <label>
                 <span className="text-sm font-medium">Subject</span>
                 <Input
                   value={formSubject}
@@ -381,12 +381,12 @@ export function TemplatesView() {
                   autoFocus
                 />
               </label>
-              <label className="block space-y-2">
+              <label className="">
                 <span className="text-sm font-medium">Message</span>
                 <AutosizeTextarea
                   value={formBody}
                   onChange={(e) => setFormBody(e.target.value)}
-                  placeholder="Hi {{first_name}}, ..."
+                  placeholder="Hi {{first_ndwaame}}, ..."
                   className="rounded-xl text-sm leading-6"
                 />
               </label>

@@ -2,6 +2,32 @@ import { createClient } from "@/lib/supabase/client";
 
 export const USER_RESUMES_BUCKET = "resumes";
 
+export type UserResumeProfile = {
+  parse_status: "pending" | "ready" | "failed";
+  parse_error: string | null;
+  primary_school_name: string | null;
+  primary_school_normalized: string | null;
+  primary_major: string | null;
+  grad_year: number | null;
+  skills: string[];
+  education: unknown[];
+  experience: unknown[];
+  projects: unknown[];
+  links: unknown[];
+  user_confirmed_at: string | null;
+};
+
+export type UserResumeProfilePatch = {
+  primary_school_name: string | null;
+  primary_major: string | null;
+  grad_year: number | null;
+  skills: string[];
+  education: Record<string, unknown>[];
+  experience: Record<string, unknown>[];
+  projects: Record<string, unknown>[];
+  links: string[];
+};
+
 export type UserResumeRow = {
   id: string;
   owner_id: string;
@@ -15,6 +41,7 @@ export type UserResumeRow = {
   status: string;
   created_at: string;
   updated_at: string;
+  profile?: UserResumeProfile;
 };
 
 /** Bearer headers for `/api/user-resumes/*` (exported for preview download). */
@@ -117,6 +144,61 @@ export async function updateUserResumeFocus(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ focus }),
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return { row: null, error: new Error(text || res.statusText) };
+    }
+    const data = (await res.json()) as { row: UserResumeRow };
+    return { row: data.row ?? null, error: null };
+  } catch (e) {
+    return {
+      row: null,
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
+export async function updateUserResumeProfile(
+  resumeId: string,
+  profile: UserResumeProfilePatch
+): Promise<{ row: UserResumeRow | null; error: Error | null }> {
+  try {
+    const res = await fetch(
+      `/api/user-resumes/${encodeURIComponent(resumeId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...(await resumeApiAuthHeaders()),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ profile }),
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return { row: null, error: new Error(text || res.statusText) };
+    }
+    const data = (await res.json()) as { row: UserResumeRow };
+    return { row: data.row ?? null, error: null };
+  } catch (e) {
+    return {
+      row: null,
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
+export async function retryUserResumeProfileParse(
+  resumeId: string
+): Promise<{ row: UserResumeRow | null; error: Error | null }> {
+  try {
+    const res = await fetch(
+      `/api/user-resumes/${encodeURIComponent(resumeId)}/profile/retry`,
+      {
+        method: "POST",
+        headers: await resumeApiAuthHeaders(),
       }
     );
     if (!res.ok) {
