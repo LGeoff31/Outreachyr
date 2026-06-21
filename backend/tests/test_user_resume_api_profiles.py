@@ -4,12 +4,14 @@ import types
 import unittest
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from resume_profile_parser import normalize_school_name
 from user_resume_api import (
     PatchResumeBody,
     ProfilePatchBody,
     _apply_profile_patch,
+    _build_resume_profile_row,
     _row_json,
 )
 
@@ -131,6 +133,32 @@ class UserResumeApiProfileTests(unittest.TestCase):
             body.profile.primary_school_name if body.profile else None,
             "University of Waterloo",
         )
+
+    def test_build_resume_profile_row_uses_parser_version_from_result(self) -> None:
+        parsed = types.SimpleNamespace(
+            raw_text="resume text",
+            raw_text_hash="abc123",
+            parse_status="ready",
+            parser_version="langchain-groq-v1",
+            parse_error=None,
+            primary_school_name="University of Waterloo",
+            primary_school_normalized="university of waterloo",
+            primary_major="Computer Science",
+            grad_year=2027,
+            skills=["Python"],
+            education=[{"school": "University of Waterloo"}],
+            experience=[],
+            projects=[],
+            links=[],
+        )
+
+        with patch("user_resume_api.parse_resume_pdf", return_value=parsed):
+            row = _build_resume_profile_row(
+                uuid.UUID("00000000-0000-0000-0000-000000000001"),
+                b"%PDF",
+            )
+
+        self.assertEqual(row.parser_version, "langchain-groq-v1")
 
 
 if __name__ == "__main__":

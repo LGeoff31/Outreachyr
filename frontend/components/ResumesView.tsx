@@ -5,6 +5,7 @@ import {
   Pencil,
   FileText,
   Loader2,
+  Plus,
   Search,
   Save,
   Trash2,
@@ -632,6 +633,46 @@ function ResumeCard({
   );
 }
 
+type EducationDraft = {
+  id: string;
+  school: string;
+  degree: string;
+  major: string;
+  startYear: string;
+  endYear: string;
+  isCurrent: boolean;
+};
+
+type ExperienceDraft = {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  description: string;
+  highlights: string;
+  skills: string;
+};
+
+type ProjectDraft = {
+  id: string;
+  name: string;
+  description: string;
+  skills: string;
+  links: string;
+  startDate: string;
+  endDate: string;
+};
+
+let profileDraftId = 0;
+
+function nextProfileDraftId() {
+  profileDraftId += 1;
+  return `profile-draft-${profileDraftId}`;
+}
+
 function ResumeProfileEditor({
   resume,
   saving,
@@ -651,33 +692,37 @@ function ResumeProfileEditor({
   const [gradYear, setGradYear] = useState(
     profile?.grad_year ? String(profile.grad_year) : ""
   );
-  const [skills, setSkills] = useState((profile?.skills ?? []).join(", "));
-  const [education, setEducation] = useState(
-    formatProfileEntries(profile?.education ?? [], [
-      "school",
-      "degree",
-      "major",
-      "end_year",
-    ])
+  const [skills, setSkills] = useState(() =>
+    cleanStringList(profile?.skills ?? [])
   );
-  const [experience, setExperience] = useState(
-    formatProfileEntries(profile?.experience ?? [], [
-      "title",
-      "company",
-      "description",
-    ])
+  const [skillInput, setSkillInput] = useState("");
+  const [links, setLinks] = useState(() => cleanStringList(profile?.links ?? []));
+  const [linkInput, setLinkInput] = useState("");
+  const [education, setEducation] = useState(() =>
+    normalizeEducationDrafts(profile?.education ?? [])
   );
-  const [projects, setProjects] = useState(
-    formatProfileEntries(profile?.projects ?? [], [
-      "name",
-      "technologies",
-      "description",
-    ])
+  const [experience, setExperience] = useState(() =>
+    normalizeExperienceDrafts(profile?.experience ?? [])
   );
-  const [links, setLinks] = useState((profile?.links ?? []).join("\n"));
+  const [projects, setProjects] = useState(() =>
+    normalizeProjectDrafts(profile?.projects ?? [])
+  );
 
   const parsedGradYear = parseGradYear(gradYear);
   const gradYearInvalid = gradYear.trim().length > 0 && parsedGradYear == null;
+
+  function saveProfile() {
+    onSave({
+      primary_school_name: cleanNullable(school),
+      primary_major: cleanNullable(major),
+      grad_year: parsedGradYear,
+      skills: cleanStringList(skills),
+      education: education.map(educationDraftToRecord).filter(hasRecordValues),
+      experience: experience.map(experienceDraftToRecord).filter(hasRecordValues),
+      projects: projects.map(projectDraftToRecord).filter(hasRecordValues),
+      links: cleanStringList(links),
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
@@ -691,7 +736,7 @@ function ResumeProfileEditor({
         role="dialog"
         aria-modal="true"
         aria-labelledby="resume-profile-editor-title"
-        className="relative z-10 flex max-h-[min(46rem,calc(100vh-1.5rem))] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        className="relative z-10 flex max-h-[min(48rem,calc(100vh-1.5rem))] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div className="min-w-0">
@@ -719,67 +764,90 @@ function ResumeProfileEditor({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <div className="grid gap-4 sm:grid-cols-3">
-            <label className="block min-w-0 sm:col-span-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                School
-              </span>
-              <Input
-                value={school}
-                onChange={(event) => setSchool(event.target.value)}
-                className="mt-2 h-10 rounded-xl text-sm"
-              />
-            </label>
-            <label className="block min-w-0 sm:col-span-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                Major
-              </span>
-              <Input
-                value={major}
-                onChange={(event) => setMajor(event.target.value)}
-                className="mt-2 h-10 rounded-xl text-sm"
-              />
-            </label>
-            <label className="block min-w-0 sm:col-span-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                Grad year
-              </span>
-              <Input
-                value={gradYear}
-                inputMode="numeric"
-                onChange={(event) => setGradYear(event.target.value)}
-                aria-invalid={gradYearInvalid || undefined}
-                className="mt-2 h-10 rounded-xl text-sm"
-              />
-            </label>
+            <TextField label="School" value={school} onChange={setSchool} />
+            <TextField label="Major" value={major} onChange={setMajor} />
+            <TextField
+              label="Grad year"
+              value={gradYear}
+              inputMode="numeric"
+              invalid={gradYearInvalid}
+              onChange={setGradYear}
+            />
           </div>
 
-          <div className="mt-4 grid gap-4">
-            <label className="block min-w-0">
-              <span className="text-xs font-medium text-muted-foreground">
-                Skills
-              </span>
-              <Input
-                value={skills}
-                onChange={(event) => setSkills(event.target.value)}
-                className="mt-2 h-10 rounded-xl text-sm"
-              />
-            </label>
-            <EditorTextarea
-              label="Education"
-              value={education}
-              onChange={setEducation}
+          <div className="mt-5 grid gap-5">
+            <StringListEditor
+              label="Skills"
+              values={skills}
+              inputValue={skillInput}
+              addLabel="Add skill"
+              onInputChange={setSkillInput}
+              onAdd={(value) => {
+                setSkills((current) => appendUniqueString(current, value));
+                setSkillInput("");
+              }}
+              onRemove={(index) =>
+                setSkills((current) => removeAtIndex(current, index))
+              }
             />
-            <EditorTextarea
-              label="Experience"
-              value={experience}
-              onChange={setExperience}
+
+            <EducationEditor
+              items={education}
+              onAdd={() =>
+                setEducation((current) => [...current, emptyEducationDraft()])
+              }
+              onRemove={(index) =>
+                setEducation((current) => removeAtIndex(current, index))
+              }
+              onChange={(index, patch) =>
+                setEducation((current) =>
+                  updateDraftAtIndex(current, index, patch)
+                )
+              }
             />
-            <EditorTextarea
-              label="Projects"
-              value={projects}
-              onChange={setProjects}
+
+            <ExperienceEditor
+              items={experience}
+              onAdd={() =>
+                setExperience((current) => [...current, emptyExperienceDraft()])
+              }
+              onRemove={(index) =>
+                setExperience((current) => removeAtIndex(current, index))
+              }
+              onChange={(index, patch) =>
+                setExperience((current) =>
+                  updateDraftAtIndex(current, index, patch)
+                )
+              }
             />
-            <EditorTextarea label="Links" value={links} onChange={setLinks} />
+
+            <ProjectEditor
+              items={projects}
+              onAdd={() =>
+                setProjects((current) => [...current, emptyProjectDraft()])
+              }
+              onRemove={(index) =>
+                setProjects((current) => removeAtIndex(current, index))
+              }
+              onChange={(index, patch) =>
+                setProjects((current) => updateDraftAtIndex(current, index, patch))
+              }
+            />
+
+            <StringListEditor
+              label="Links"
+              values={links}
+              inputValue={linkInput}
+              addLabel="Add link"
+              onInputChange={setLinkInput}
+              onAdd={(value) => {
+                setLinks((current) => appendUniqueString(current, value));
+                setLinkInput("");
+              }}
+              onRemove={(index) =>
+                setLinks((current) => removeAtIndex(current, index))
+              }
+            />
           </div>
         </div>
 
@@ -809,31 +877,7 @@ function ResumeProfileEditor({
               type="button"
               className="rounded-xl"
               disabled={saving || gradYearInvalid}
-              onClick={() =>
-                onSave({
-                  primary_school_name: cleanNullable(school),
-                  primary_major: cleanNullable(major),
-                  grad_year: parsedGradYear,
-                  skills: parseDelimitedList(skills),
-                  education: parseProfileEntries(education, [
-                    "school",
-                    "degree",
-                    "major",
-                    "end_year",
-                  ]),
-                  experience: parseProfileEntries(experience, [
-                    "title",
-                    "company",
-                    "description",
-                  ]),
-                  projects: parseProfileEntries(projects, [
-                    "name",
-                    "technologies",
-                    "description",
-                  ]),
-                  links: parseLineList(links),
-                })
-              }
+              onClick={saveProfile}
             >
               {saving ? (
                 <Loader2
@@ -853,13 +897,75 @@ function ResumeProfileEditor({
   );
 }
 
-function EditorTextarea({
+function SectionHeader({
+  title,
+  count,
+  addLabel,
+  onAdd,
+}: {
+  title: string;
+  count: number;
+  addLabel?: string;
+  onAdd?: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">{count} saved</p>
+      </div>
+      {addLabel && onAdd ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 rounded-xl"
+          onClick={onAdd}
+        >
+          <Plus data-icon="inline-start" aria-hidden />
+          {addLabel}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function TextField({
   label,
   value,
+  inputMode,
+  invalid,
   onChange,
 }: {
   label: string;
   value: string;
+  inputMode?: "numeric";
+  invalid?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <Input
+        value={value}
+        inputMode={inputMode}
+        aria-invalid={invalid || undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-10 rounded-xl text-sm"
+      />
+    </label>
+  );
+}
+
+function TextareaField({
+  label,
+  value,
+  rows = 2,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  rows?: number;
   onChange: (value: string) => void;
 }) {
   return (
@@ -867,9 +973,356 @@ function EditorTextarea({
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <AutosizeTextarea
         value={value}
+        rows={rows}
         onChange={(event) => onChange(event.target.value)}
         className="mt-2 rounded-xl text-sm leading-relaxed"
       />
+    </label>
+  );
+}
+
+function StringListEditor({
+  label,
+  values,
+  inputValue,
+  addLabel,
+  onInputChange,
+  onAdd,
+  onRemove,
+}: {
+  label: string;
+  values: string[];
+  inputValue: string;
+  addLabel: string;
+  onInputChange: (value: string) => void;
+  onAdd: (value: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title={label}
+        count={values.length}
+      />
+      {values.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {values.map((value, index) => (
+            <span
+              key={`${value}-${index}`}
+              className="inline-flex max-w-full items-center gap-1 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs text-foreground"
+            >
+              <span className="truncate">{value}</span>
+              <button
+                type="button"
+                className="rounded-md p-0.5 text-muted-foreground hover:text-foreground"
+                aria-label={`Remove ${value}`}
+                onClick={() => onRemove(index)}
+              >
+                <X aria-hidden className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <Input
+          value={inputValue}
+          onChange={(event) => onInputChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onAdd(inputValue);
+            }
+          }}
+          className="h-10 rounded-xl text-sm"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => onAdd(inputValue)}
+        >
+          <Plus data-icon="inline-start" aria-hidden />
+          Add
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function EducationEditor({
+  items,
+  onAdd,
+  onRemove,
+  onChange,
+}: {
+  items: EducationDraft[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<EducationDraft>) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title="Education"
+        count={items.length}
+        addLabel="Add school"
+        onAdd={onAdd}
+      />
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-border bg-background/40 p-4"
+          >
+            <ItemHeader
+              title={item.school || "Education"}
+              onRemove={() => onRemove(index)}
+            />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <TextField
+                label="School"
+                value={item.school}
+                onChange={(value) => onChange(index, { school: value })}
+              />
+              <TextField
+                label="Degree"
+                value={item.degree}
+                onChange={(value) => onChange(index, { degree: value })}
+              />
+              <TextField
+                label="Major"
+                value={item.major}
+                onChange={(value) => onChange(index, { major: value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Start"
+                  value={item.startYear}
+                  inputMode="numeric"
+                  onChange={(value) => onChange(index, { startYear: value })}
+                />
+                <TextField
+                  label="End"
+                  value={item.endYear}
+                  inputMode="numeric"
+                  onChange={(value) => onChange(index, { endYear: value })}
+                />
+              </div>
+            </div>
+            <CheckboxField
+              label="Current"
+              checked={item.isCurrent}
+              onChange={(value) => onChange(index, { isCurrent: value })}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ExperienceEditor({
+  items,
+  onAdd,
+  onRemove,
+  onChange,
+}: {
+  items: ExperienceDraft[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<ExperienceDraft>) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title="Experience"
+        count={items.length}
+        addLabel="Add role"
+        onAdd={onAdd}
+      />
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-border bg-background/40 p-4"
+          >
+            <ItemHeader
+              title={formatTitleSubtitle(item.title, item.company) || "Experience"}
+              onRemove={() => onRemove(index)}
+            />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <TextField
+                label="Title"
+                value={item.title}
+                onChange={(value) => onChange(index, { title: value })}
+              />
+              <TextField
+                label="Company"
+                value={item.company}
+                onChange={(value) => onChange(index, { company: value })}
+              />
+              <TextField
+                label="Location"
+                value={item.location}
+                onChange={(value) => onChange(index, { location: value })}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Start"
+                  value={item.startDate}
+                  onChange={(value) => onChange(index, { startDate: value })}
+                />
+                <TextField
+                  label="End"
+                  value={item.endDate}
+                  onChange={(value) => onChange(index, { endDate: value })}
+                />
+              </div>
+            </div>
+            <div className="mt-3 grid gap-3">
+              <TextareaField
+                label="Description"
+                value={item.description}
+                onChange={(value) => onChange(index, { description: value })}
+              />
+              <TextareaField
+                label="Highlights"
+                value={item.highlights}
+                onChange={(value) => onChange(index, { highlights: value })}
+              />
+              <TextField
+                label="Skills"
+                value={item.skills}
+                onChange={(value) => onChange(index, { skills: value })}
+              />
+            </div>
+            <CheckboxField
+              label="Current"
+              checked={item.isCurrent}
+              onChange={(value) => onChange(index, { isCurrent: value })}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectEditor({
+  items,
+  onAdd,
+  onRemove,
+  onChange,
+}: {
+  items: ProjectDraft[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<ProjectDraft>) => void;
+}) {
+  return (
+    <section className="min-w-0 border-t border-border pt-5">
+      <SectionHeader
+        title="Projects"
+        count={items.length}
+        addLabel="Add project"
+        onAdd={onAdd}
+      />
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-border bg-background/40 p-4"
+          >
+            <ItemHeader
+              title={item.name || "Project"}
+              onRemove={() => onRemove(index)}
+            />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <TextField
+                label="Name"
+                value={item.name}
+                onChange={(value) => onChange(index, { name: value })}
+              />
+              <TextField
+                label="Skills"
+                value={item.skills}
+                onChange={(value) => onChange(index, { skills: value })}
+              />
+              <TextField
+                label="Start"
+                value={item.startDate}
+                onChange={(value) => onChange(index, { startDate: value })}
+              />
+              <TextField
+                label="End"
+                value={item.endDate}
+                onChange={(value) => onChange(index, { endDate: value })}
+              />
+            </div>
+            <div className="mt-3 grid gap-3">
+              <TextareaField
+                label="Description"
+                value={item.description}
+                onChange={(value) => onChange(index, { description: value })}
+              />
+              <TextareaField
+                label="Links"
+                value={item.links}
+                onChange={(value) => onChange(index, { links: value })}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ItemHeader({
+  title,
+  onRemove,
+}: {
+  title: string;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <h4 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        {title}
+      </h4>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0 rounded-lg text-destructive hover:text-destructive"
+        aria-label={`Remove ${title}`}
+        onClick={onRemove}
+      >
+        <Trash2 aria-hidden className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+function CheckboxField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="mt-3 flex w-fit items-center gap-2 text-xs font-medium text-muted-foreground">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-4 rounded border-border"
+      />
+      {label}
     </label>
   );
 }
@@ -901,47 +1354,203 @@ function parseLineList(value: string) {
     .filter(Boolean);
 }
 
-function parseProfileEntries(value: string, keys: string[]) {
-  return parseLineList(value).map((line) => {
-    const parts = line.split("|").map((part) => part.trim());
-    const record: Record<string, unknown> = {};
-    keys.forEach((key, index) => {
-      const part = parts[index];
-      if (!part) return;
-      if (key === "end_year") {
-        const year = parseGradYear(part);
-        if (year != null) record[key] = year;
-        return;
-      }
-      if (key === "technologies") {
-        record[key] = parseDelimitedList(part);
-        return;
-      }
-      record[key] = part;
-    });
-    return record;
-  });
-}
-
-function formatProfileEntries(values: unknown[], keys: string[]) {
-  return values.map((value) => formatProfileEntry(value, keys)).join("\n");
-}
-
-function formatProfileEntry(value: unknown, keys: string[]) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return String(value ?? "");
+function cleanStringList(values: unknown[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const clean = String(value ?? "").trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
   }
-  const record = value as Record<string, unknown>;
-  const parts = keys
-    .map((key) => formatProfilePart(record[key]))
-    .filter(Boolean);
-  return parts.join(" | ");
+  return out;
 }
 
-function formatProfilePart(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item)).filter(Boolean).join(", ");
-  }
+function appendUniqueString(values: string[], value: string) {
+  return cleanStringList([...values, value]);
+}
+
+function removeAtIndex<T>(values: T[], index: number) {
+  return values.filter((_, itemIndex) => itemIndex !== index);
+}
+
+function updateDraftAtIndex<T>(values: T[], index: number, patch: Partial<T>) {
+  return values.map((item, itemIndex) =>
+    itemIndex === index ? { ...item, ...patch } : item
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function textFromRecord(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  if (Array.isArray(value)) return value.map(String).join(", ");
   if (value == null) return "";
   return String(value);
+}
+
+function boolFromRecord(record: Record<string, unknown>, key: string) {
+  return record[key] === true;
+}
+
+function normalizeEducationDrafts(values: unknown[]) {
+  const drafts = values.filter(isRecord).map((record) => ({
+    id: nextProfileDraftId(),
+    school: textFromRecord(record, "school"),
+    degree: textFromRecord(record, "degree"),
+    major: textFromRecord(record, "major"),
+    startYear: textFromRecord(record, "start_year"),
+    endYear: textFromRecord(record, "end_year"),
+    isCurrent: boolFromRecord(record, "is_current"),
+  }));
+  return drafts.length > 0 ? drafts : [];
+}
+
+function normalizeExperienceDrafts(values: unknown[]) {
+  const drafts = values.filter(isRecord).map((record) => ({
+    id: nextProfileDraftId(),
+    title: textFromRecord(record, "title"),
+    company: textFromRecord(record, "company"),
+    location: textFromRecord(record, "location"),
+    startDate: textFromRecord(record, "start_date"),
+    endDate: textFromRecord(record, "end_date"),
+    isCurrent: boolFromRecord(record, "is_current"),
+    description: textFromRecord(record, "description"),
+    highlights: textFromRecord(record, "highlights"),
+    skills:
+      textFromRecord(record, "skills") ||
+      textFromRecord(record, "technologies"),
+  }));
+  return drafts.length > 0 ? drafts : [];
+}
+
+function normalizeProjectDrafts(values: unknown[]) {
+  const drafts = values.filter(isRecord).map((record) => ({
+    id: nextProfileDraftId(),
+    name: textFromRecord(record, "name"),
+    description: textFromRecord(record, "description"),
+    skills:
+      textFromRecord(record, "skills") ||
+      textFromRecord(record, "technologies"),
+    links: textFromRecord(record, "links"),
+    startDate: textFromRecord(record, "start_date"),
+    endDate: textFromRecord(record, "end_date"),
+  }));
+  return drafts.length > 0 ? drafts : [];
+}
+
+function emptyEducationDraft(): EducationDraft {
+  return {
+    id: nextProfileDraftId(),
+    school: "",
+    degree: "",
+    major: "",
+    startYear: "",
+    endYear: "",
+    isCurrent: false,
+  };
+}
+
+function emptyExperienceDraft(): ExperienceDraft {
+  return {
+    id: nextProfileDraftId(),
+    title: "",
+    company: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+    isCurrent: false,
+    description: "",
+    highlights: "",
+    skills: "",
+  };
+}
+
+function emptyProjectDraft(): ProjectDraft {
+  return {
+    id: nextProfileDraftId(),
+    name: "",
+    description: "",
+    skills: "",
+    links: "",
+    startDate: "",
+    endDate: "",
+  };
+}
+
+function educationDraftToRecord(item: EducationDraft) {
+  const record: Record<string, unknown> = {};
+  assignCleanText(record, "school", item.school);
+  assignCleanText(record, "degree", item.degree);
+  assignCleanText(record, "major", item.major);
+  assignCleanYear(record, "start_year", item.startYear);
+  assignCleanYear(record, "end_year", item.endYear);
+  if (hasRecordValues(record)) record.is_current = item.isCurrent;
+  return record;
+}
+
+function experienceDraftToRecord(item: ExperienceDraft) {
+  const record: Record<string, unknown> = {};
+  assignCleanText(record, "title", item.title);
+  assignCleanText(record, "company", item.company);
+  assignCleanText(record, "location", item.location);
+  assignCleanText(record, "start_date", item.startDate);
+  assignCleanText(record, "end_date", item.endDate);
+  assignCleanText(record, "description", item.description);
+  assignCleanList(record, "highlights", parseLineList(item.highlights));
+  assignCleanList(record, "skills", parseDelimitedList(item.skills));
+  if (hasRecordValues(record)) record.is_current = item.isCurrent;
+  return record;
+}
+
+function projectDraftToRecord(item: ProjectDraft) {
+  const record: Record<string, unknown> = {};
+  assignCleanText(record, "name", item.name);
+  assignCleanText(record, "description", item.description);
+  assignCleanText(record, "start_date", item.startDate);
+  assignCleanText(record, "end_date", item.endDate);
+  assignCleanList(record, "skills", parseDelimitedList(item.skills));
+  assignCleanList(record, "links", parseLineList(item.links));
+  return record;
+}
+
+function assignCleanText(
+  record: Record<string, unknown>,
+  key: string,
+  value: string
+) {
+  const clean = cleanNullable(value);
+  if (clean) record[key] = clean;
+}
+
+function assignCleanYear(
+  record: Record<string, unknown>,
+  key: string,
+  value: string
+) {
+  const year = parseGradYear(value);
+  if (year != null) record[key] = year;
+}
+
+function assignCleanList(
+  record: Record<string, unknown>,
+  key: string,
+  values: string[]
+) {
+  const clean = cleanStringList(values);
+  if (clean.length > 0) record[key] = clean;
+}
+
+function hasRecordValues(record: Record<string, unknown>) {
+  return Object.keys(record).length > 0;
+}
+
+function formatTitleSubtitle(title: string, subtitle: string) {
+  const cleanTitle = title.trim();
+  const cleanSubtitle = subtitle.trim();
+  if (cleanTitle && cleanSubtitle) return `${cleanTitle} - ${cleanSubtitle}`;
+  return cleanTitle || cleanSubtitle;
 }

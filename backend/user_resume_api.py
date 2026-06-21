@@ -252,7 +252,7 @@ def _build_resume_profile_row(resume_id: uuid.UUID, data: bytes) -> ResumeProfil
         raw_text=parsed.raw_text,
         raw_text_hash=parsed.raw_text_hash,
         parse_status=parsed.parse_status,
-        parser_version=PARSER_VERSION,
+        parser_version=parsed.parser_version,
         parse_error=parsed.parse_error,
         primary_school_name=parsed.primary_school_name,
         primary_school_normalized=parsed.primary_school_normalized,

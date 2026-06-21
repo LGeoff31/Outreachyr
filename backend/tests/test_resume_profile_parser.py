@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
+import resume_profile_parser as parser
 from resume_profile_parser import (
     extract_pdf_text,
     normalize_school_name,
@@ -9,13 +11,16 @@ from resume_profile_parser import (
 )
 
 
-def _minimal_pdf_with_text(text: str) -> bytes:
+def _minimal_pdf_with_text(text: str, link_uri: str | None = None) -> bytes:
     escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    page_annots = b" /Annots [6 0 R]" if link_uri else b""
     objects = [
         b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
         b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
         b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R"
+        + page_annots
+        + b" >>\nendobj\n",
         b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
     ]
     stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode("utf-8")
@@ -26,6 +31,16 @@ def _minimal_pdf_with_text(text: str) -> bytes:
         + stream
         + b"\nendstream\nendobj\n"
     )
+    if link_uri:
+        escaped_uri = (
+            link_uri.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        )
+        objects.append(
+            b"6 0 obj\n<< /Type /Annot /Subtype /Link /Rect [72 700 180 720] "
+            b"/Border [0 0 0] /A << /S /URI /URI ("
+            + escaped_uri.encode("utf-8")
+            + b") >> >>\nendobj\n"
+        )
     out = bytearray(b"%PDF-1.4\n")
     offsets: list[int] = [0]
     for obj in objects:
@@ -51,58 +66,263 @@ class ResumeProfileParserTests(unittest.TestCase):
 
         self.assertIn("University of Waterloo Resume", text)
 
-    def test_parse_resume_text_extracts_structured_sections(self) -> None:
-        raw_text = """
-        Geoffrey Lee
-        https://github.com/geoff
+    def test_extract_pdf_text_includes_clickable_link_annotations(self) -> None:
+        data = _minimal_pdf_with_text(
+            "GitHub",
+            link_uri="https://github.com/Dygitz",
+        )
 
+        text = extract_pdf_text(data)
+
+        self.assertIn("https://github.com/Dygitz", text)
+
+    def test_extract_pdf_text_excludes_mailto_link_annotations(self) -> None:
+        data = _minimal_pdf_with_text(
+            "Email",
+            link_uri="mailto:d4ritz@uwaterloo.ca",
+        )
+
+        text = extract_pdf_text(data)
+
+        self.assertNotIn("mailto:", text)
+
+    def test_parse_resume_text_returns_failed_when_ai_disabled(self) -> None:
+        raw_text = """
         EDUCATION
         University of Waterloo
-        Bachelor of Computer Science, Data Science
-        Expected May 2027
-
-        EXPERIENCE
-        Software Engineer Intern, Snowflake
-        Built ingestion pipelines in Python and SQL.
-
-        PROJECTS
-        Distributed Job Queue - Python, Redis, Docker
-        Built a fault-tolerant worker system.
-
-        SKILLS
-        Python, TypeScript, React, PostgreSQL
+        Bachelor of Computer Science
         """
 
-        profile = parse_resume_text(raw_text)
+        with patch.dict(
+            "os.environ",
+            {"RESUME_PROFILE_AI_ENABLED": "false"},
+            clear=False,
+        ):
+            profile = parse_resume_text(raw_text)
+
+        self.assertEqual(profile.parse_status, "failed")
+        self.assertEqual(profile.parser_version, parser.AI_PARSER_VERSION)
+        self.assertIn("AI resume parsing is not configured", profile.parse_error or "")
+        self.assertEqual(profile.raw_text, raw_text.strip())
+        self.assertEqual(profile.raw_text_hash, parser.raw_text_hash(raw_text.strip()))
+        self.assertEqual(profile.education, [])
+        self.assertEqual(profile.experience, [])
+        self.assertEqual(profile.projects, [])
+
+    def test_resume_ai_model_uses_gpt_oss_when_override_lacks_json_schema(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"RESUME_PROFILE_AI_MODEL": "llama-3.1-8b-instant"},
+            clear=False,
+        ):
+            with self.assertLogs(parser.logger, level="WARNING"):
+                self.assertEqual(parser._resume_ai_model(), parser.DEFAULT_AI_MODEL)
+
+    def test_ai_schema_accepts_partial_items_from_groq(self) -> None:
+        profile = parser.AiResumeProfile.model_validate(
+            {
+                "primary_school_name": "University of Waterloo",
+                "primary_major": "Software Engineering",
+                "grad_year": 2027,
+                "skills": ["Python"],
+                "education": [{"school": "University of Waterloo"}],
+                "experience": [
+                    {
+                        "company": "Super.com",
+                        "title": "Software Engineer Intern",
+                    }
+                ],
+                "projects": [{"name": "Blindseer"}],
+                "links": ["https://github.com/Dygitz"],
+            }
+        )
+
+        self.assertEqual(profile.education[0].school, "University of Waterloo")
+        self.assertEqual(profile.experience[0].company, "Super.com")
+        self.assertEqual(profile.experience[0].highlights, [])
+        self.assertEqual(profile.projects[0].skills, [])
+
+    def test_ai_schema_maps_legacy_technologies_to_skills(self) -> None:
+        profile = parser.AiResumeProfile.model_validate(
+            {
+                "primary_school_name": None,
+                "primary_major": None,
+                "grad_year": None,
+                "skills": [],
+                "education": [],
+                "experience": [
+                    {
+                        "company": "Super.com",
+                        "technologies": ["Kubernetes", "AWS"],
+                    }
+                ],
+                "projects": [
+                    {
+                        "name": "Blindseer",
+                        "technologies": ["Python", "GCP"],
+                    }
+                ],
+                "links": [],
+            }
+        )
+
+        self.assertEqual(profile.experience[0].skills, ["Kubernetes", "AWS"])
+        self.assertEqual(profile.projects[0].skills, ["Python", "GCP"])
+
+    def test_parse_resume_text_uses_langchain_groq_schema_when_configured(self) -> None:
+        ai_profile = parser.AiResumeProfile(
+            primary_school_name="University of Waterloo",
+            primary_major="Computer Science",
+            grad_year=2027,
+            skills=["Python", "React", "python"],
+            education=[
+                parser.AiEducationItem(
+                    school="University of Waterloo",
+                    degree="Bachelor of Computer Science",
+                    major="Computer Science",
+                    start_year=2023,
+                    end_year=2027,
+                    is_current=True,
+                    confidence=0.95,
+                )
+            ],
+            experience=[
+                parser.AiExperienceItem(
+                    title="Software Engineer Intern",
+                    company="Snowflake",
+                    location=None,
+                    start_date="2025-05",
+                    end_date="2025-08",
+                    is_current=False,
+                    description="Built ingestion pipelines.",
+                    highlights=["Built ingestion pipelines."],
+                    skills=["Python", "SQL"],
+                    confidence=0.9,
+                )
+            ],
+            projects=[
+                parser.AiProjectItem(
+                    name="Distributed Job Queue",
+                    description="Built a worker system.",
+                    skills=["Redis", "Docker"],
+                    links=["https://github.com/geoff/queue"],
+                    start_date=None,
+                    end_date=None,
+                    confidence=0.88,
+                )
+            ],
+            links=["https://github.com/geoff"],
+        )
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "GROQ_API_KEY": "test-key",
+                    "RESUME_PROFILE_AI_ENABLED": "true",
+                },
+                clear=False,
+            ),
+            patch.object(
+                parser,
+                "_parse_resume_text_with_langchain_groq",
+                return_value=ai_profile,
+            ) as parse_with_ai,
+        ):
+            profile = parse_resume_text("plain text without section headings")
+
+        parse_with_ai.assert_called_once_with("plain text without section headings")
+        self.assertEqual(profile.parser_version, parser.AI_PARSER_VERSION)
+        self.assertEqual(profile.primary_school_name, "University of Waterloo")
+        self.assertEqual(profile.primary_school_normalized, "university of waterloo")
+        self.assertEqual(profile.primary_major, "Computer Science")
+        self.assertEqual(profile.grad_year, 2027)
+        self.assertEqual(profile.skills, ["Python", "React"])
+        self.assertEqual(profile.experience[0]["company"], "Snowflake")
+        self.assertEqual(profile.experience[0]["skills"], ["Python", "SQL"])
+        self.assertNotIn("technologies", profile.experience[0])
+        self.assertEqual(profile.projects[0]["skills"], ["Redis", "Docker"])
+        self.assertNotIn("technologies", profile.projects[0])
+        self.assertEqual(
+            profile.links,
+            ["https://github.com/geoff", "https://github.com/geoff/queue"],
+        )
+
+    def test_parse_resume_text_cleans_ai_school_location_suffix(self) -> None:
+        ai_profile = parser.AiResumeProfile(
+            primary_school_name="University of Waterloo Waterloo, Ontario",
+            primary_major="Software Engineering",
+            grad_year=2027,
+            skills=[],
+            education=[
+                parser.AiEducationItem(
+                    school="University of Waterloo Waterloo, Ontario",
+                    degree="BSE",
+                    major="Software Engineering",
+                    end_year=2027,
+                )
+            ],
+            experience=[],
+            projects=[],
+            links=[],
+        )
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "GROQ_API_KEY": "test-key",
+                    "RESUME_PROFILE_AI_ENABLED": "true",
+                },
+                clear=False,
+            ),
+            patch.object(
+                parser,
+                "_parse_resume_text_with_langchain_groq",
+                return_value=ai_profile,
+            ),
+        ):
+            profile = parse_resume_text("raw resume text")
 
         self.assertEqual(profile.primary_school_name, "University of Waterloo")
+        self.assertEqual(profile.education[0]["school"], "University of Waterloo")
         self.assertEqual(
             profile.primary_school_normalized,
             normalize_school_name("University of Waterloo"),
         )
-        self.assertEqual(profile.primary_major, "Data Science")
-        self.assertEqual(profile.grad_year, 2027)
-        self.assertIn("Python", profile.skills)
-        self.assertEqual(profile.education[0]["school"], "University of Waterloo")
-        self.assertEqual(profile.experience[0]["title"], "Software Engineer Intern")
-        self.assertEqual(profile.projects[0]["name"], "Distributed Job Queue")
-        self.assertEqual(profile.links, ["https://github.com/geoff"])
 
-    def test_parse_resume_text_prefers_current_school_for_transfer_resume(self) -> None:
+    def test_parse_resume_text_returns_failed_when_ai_fails(self) -> None:
         raw_text = """
         EDUCATION
-        University of Toronto
-        Computer Science, 2022 - 2023
-
         University of Waterloo
         Bachelor of Computer Science
-        2024 - 2027 Expected
+        Expected 2027
         """
 
-        profile = parse_resume_text(raw_text)
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "GROQ_API_KEY": "test-key",
+                    "RESUME_PROFILE_AI_ENABLED": "true",
+                },
+                clear=False,
+            ),
+            patch.object(
+                parser,
+                "_parse_resume_text_with_langchain_groq",
+                side_effect=RuntimeError("Groq unavailable"),
+            ),
+            self.assertLogs(parser.logger, level="WARNING") as logs,
+        ):
+            profile = parse_resume_text(raw_text)
 
-        self.assertEqual(profile.primary_school_name, "University of Waterloo")
-        self.assertEqual(len(profile.education), 2)
+        self.assertEqual(profile.parse_status, "failed")
+        self.assertEqual(profile.parser_version, parser.AI_PARSER_VERSION)
+        self.assertIsNone(profile.primary_school_name)
+        self.assertIn("Groq unavailable", profile.parse_error or "")
+        self.assertEqual(profile.raw_text, raw_text.strip())
+        self.assertTrue(any("AI resume parsing failed" in msg for msg in logs.output))
 
 
 if __name__ == "__main__":
