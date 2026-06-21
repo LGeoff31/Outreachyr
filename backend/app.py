@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 import google_oauth as google_auth
 import send as outreach
@@ -26,6 +28,7 @@ from config import (
     supabase_publishable_key,
     supabase_url,
 )
+from database import make_engine
 from gmail_send_oauth import ensure_fresh_access_token, send_messages_oauth
 from mapping import COMPANY_EMAIL_HOST
 from recipient_selection import (
@@ -69,6 +72,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(OperationalError)
+async def db_operational_error_handler(_request: Request, exc: OperationalError):
+    logger.exception("Database connection failed")
+    detail = str(getattr(exc, "orig", exc))
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": f"Database connection failed: {detail}",
+            "code": "database_unavailable",
+        },
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def db_sqlalchemy_error_handler(_request: Request, exc: SQLAlchemyError):
+    logger.exception("Database query failed")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": f"Database error: {exc}",
+            "code": "database_error",
+        },
+    )
 
 
 def _parse_bool(v: str) -> bool:
@@ -683,6 +711,48 @@ def api_send_json(request: Request, body: SendJsonRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/health/db")
+def health_db():
+    import os
+
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "code": "database_not_configured",
+                "detail": "DATABASE_URL is not set on the backend.",
+            },
+        )
+
+    host_hint = "unknown"
+    if "@" in database_url:
+        host_hint = database_url.split("@", 1)[1].split("/", 1)[0]
+
+    try:
+        with make_engine().connect() as connection:
+            templates = connection.execute(
+                text("select count(*) from templates")
+            ).scalar_one()
+        return {
+            "ok": True,
+            "database_host": host_hint,
+            "templates_count": templates,
+        }
+    except Exception as exc:
+        logger.exception("Health DB check failed")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "code": "database_unavailable",
+                "database_host": host_hint,
+                "detail": str(exc),
+            },
+        )
 
 
 if __name__ == "__main__":
