@@ -61,6 +61,7 @@ import {
   fetchCampaignDetail,
   type CampaignDetailResponse,
 } from "@/lib/supabase/campaigns";
+import { fetchEmailTemplateRows } from "@/lib/supabase/emailTemplates";
 import {
   fetchUserResumeRows,
   resumeApiAuthHeaders,
@@ -102,9 +103,12 @@ Geoffrey`;
 export function OutreachForm() {
   const searchParams = useSearchParams();
   const campaignFromUrl = searchParams.get("campaign")?.trim() || null;
+  const templateFromUrl = searchParams.get("template")?.trim() || null;
+  const resumeFromUrl = searchParams.get("resume")?.trim() || null;
 
   const [company, setCompany] = useState("");
   const [testMode, setTestMode] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -250,7 +254,7 @@ export function OutreachForm() {
           return;
         }
         setSavedResumes(rows);
-        if (!campaignFromUrl) {
+        if (!campaignFromUrl && !resumeFromUrl) {
           const defaultRow = rows.find((r) => r.is_default);
           if (defaultRow) await applyLibraryResume(defaultRow);
         }
@@ -261,7 +265,7 @@ export function OutreachForm() {
     return () => {
       cancelled = true;
     };
-  }, [applyLibraryResume, campaignFromUrl]);
+  }, [applyLibraryResume, campaignFromUrl, resumeFromUrl]);
 
   useEffect(() => {
     if (!campaignFromUrl) {
@@ -355,6 +359,43 @@ export function OutreachForm() {
     applyLibraryResume,
   ]);
 
+  useEffect(() => {
+    if (!templateFromUrl || campaignFromUrl) return;
+    if (!isSupabaseConfigured()) return;
+    let cancelled = false;
+    (async () => {
+      const { rows, error } = await fetchEmailTemplateRows();
+      if (cancelled || error) return;
+      const template = rows.find((r) => r.id === templateFromUrl);
+      if (!template) return;
+      setSubject(template.subject);
+      setBodyText(template.body_text);
+      setErr(false);
+      setMessage("Template applied. Add a company and fetch recruiters.");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [templateFromUrl, campaignFromUrl]);
+
+  useEffect(() => {
+    if (!resumeFromUrl || campaignFromUrl || savedResumesLoading) return;
+    const row = savedResumes.find((r) => r.id === resumeFromUrl);
+    if (row) void applyLibraryResume(row);
+  }, [
+    resumeFromUrl,
+    campaignFromUrl,
+    savedResumes,
+    savedResumesLoading,
+    applyLibraryResume,
+  ]);
+
+  useEffect(() => {
+    if (!testMode) return;
+    const email = testEmail.trim();
+    setRecipients(isValidEmail(email) ? [{ email }] : []);
+  }, [testMode, testEmail]);
+
   const companyReady =
     testMode || company.trim().length > 0;
   const campaignActionsLocked =
@@ -378,7 +419,9 @@ export function OutreachForm() {
           : loading === "preview"
             ? "Wait for recruiter search to finish."
             : recipients.length === 0
-              ? "Fetch recruiters first."
+              ? testMode
+                ? "Enter a valid test email address."
+                : "Fetch recruiters first."
               : undefined;
   const companyInvalid = err && !companyReady;
 
@@ -389,6 +432,7 @@ export function OutreachForm() {
     setFile(null);
     setSelectedSavedResumeId(null);
     setTestMode(false);
+    setTestEmail("");
     setErr(false);
     setErrorDetails(null);
 
@@ -433,6 +477,10 @@ export function OutreachForm() {
 
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
+      if (dryRun && testMode) {
+        return;
+      }
+
       if (!companyReady) {
         setErr(true);
         setMessage("Enter a company name before running the dry run.");
@@ -814,8 +862,11 @@ export function OutreachForm() {
             resumeFileName={file?.name ?? null}
             resumePreviewUrl={resumePreviewUrl}
             testMode={testMode}
+            testEmail={testEmail}
+            onTestEmailChange={setTestEmail}
             onTestModeChange={(enabled) => {
               setTestMode(enabled);
+              setTestEmail("");
               setRecipients([]);
             }}
             onRemoveRecipient={removeRecipientAt}
@@ -988,6 +1039,8 @@ function ReviewPanel({
   resumeFileName,
   resumePreviewUrl,
   testMode,
+  testEmail,
+  onTestEmailChange,
   onTestModeChange,
   onRemoveRecipient,
   loading,
@@ -1005,6 +1058,8 @@ function ReviewPanel({
   resumeFileName: string | null;
   resumePreviewUrl: string | null;
   testMode: boolean;
+  testEmail: string;
+  onTestEmailChange: (value: string) => void;
   onTestModeChange: (enabled: boolean) => void;
   onRemoveRecipient: (index: number) => void;
   loading: "preview" | "send" | null;
@@ -1060,28 +1115,62 @@ function ReviewPanel({
             </FieldLabel>
           </Field>
         </div>
-        <CardAction>
-          <Button
-            type="submit"
-            variant="secondary"
-            size="sm"
-            disabled={loading !== null || actionsLocked}
-            className="min-h-9 gap-2 rounded-xl"
-          >
-            {loading === "preview" ? (
-              <Loader2
-                data-icon="inline-start"
-                aria-hidden="true"
-                className="animate-spin"
-              />
-            ) : (
-              <Search data-icon="inline-start" aria-hidden="true" />
-            )}
-            Fetch recruiters
-          </Button>
-        </CardAction>
+        {testMode ? null : (
+          <CardAction>
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              disabled={loading !== null || actionsLocked}
+              className="min-h-9 gap-2 rounded-xl"
+            >
+              {loading === "preview" ? (
+                <Loader2
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                  className="animate-spin"
+                />
+              ) : (
+                <Search data-icon="inline-start" aria-hidden="true" />
+              )}
+              Fetch recruiters
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="p-0">
+        {testMode ? (
+          <div className="border-b border-border px-5 py-4">
+            <label
+              htmlFor="test-email"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Test email address
+            </label>
+            <Input
+              id="test-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={testEmail}
+              disabled={actionsLocked}
+              placeholder="you@example.com"
+              onChange={(event) => onTestEmailChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.preventDefault();
+              }}
+              aria-invalid={
+                (testEmail.trim().length > 0 && !isValidEmail(testEmail)) ||
+                undefined
+              }
+              className="mt-2 h-10 rounded-xl text-sm"
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              The campaign email will be sent only to this address so you can
+              check how it looks.
+            </p>
+          </div>
+        ) : null}
         <div className="max-h-none overflow-y-visible px-5 py-4 xl:max-h-[calc(100vh-18rem)] xl:overflow-y-auto">
           {recipients.length === 0 ? (
             <Empty className="min-h-56 border border-dashed border-border bg-muted/30">
@@ -1091,26 +1180,29 @@ function ReviewPanel({
                 </EmptyMedia>
                 <EmptyTitle>No recipients yet</EmptyTitle>
                 <EmptyDescription>
-                  Find recruiters for your target company, then preview each
-                  email here.
+                  {testMode
+                    ? "Enter a valid email address above to send yourself a test."
+                    : "Find recruiters for your target company, then preview each email here."}
                 </EmptyDescription>
               </EmptyHeader>
-              <EmptyContent>
-                <Button
-                  type="submit"
-                  variant="secondary"
-                  size="sm"
-                  disabled={loading !== null || actionsLocked}
-                  className="min-h-10 gap-2 rounded-xl"
-                >
-                  {loading === "preview" ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Search className="size-4" aria-hidden />
-                  )}
-                  Fetch recruiters
-                </Button>
-              </EmptyContent>
+              {testMode ? null : (
+                <EmptyContent>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    size="sm"
+                    disabled={loading !== null || actionsLocked}
+                    className="min-h-10 gap-2 rounded-xl"
+                  >
+                    {loading === "preview" ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Search className="size-4" aria-hidden />
+                    )}
+                    Fetch recruiters
+                  </Button>
+                </EmptyContent>
+              )}
             </Empty>
           ) : (
             <div className="flex flex-col gap-2.5">
@@ -1362,8 +1454,8 @@ function EmailFullPreview({
                 {resumePreviewUrl ? (
                   <iframe
                     title={`Resume preview: ${resumeFileName}`}
-                    src={resumePreviewUrl}
-                    className="mt-3 h-56 w-full rounded-lg border border-border bg-muted/20 sm:h-64"
+                    src={`${resumePreviewUrl}#view=FitH&toolbar=0&navpanes=0`}
+                    className="mt-3 aspect-[8.5/11] w-full rounded-lg border border-border bg-muted/20"
                   />
                 ) : null}
               </div>
@@ -1373,6 +1465,11 @@ function EmailFullPreview({
       </div>
     </div>
   );
+}
+
+function isValidEmail(value: string) {
+  const email = value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function recipientInitial(name?: string) {

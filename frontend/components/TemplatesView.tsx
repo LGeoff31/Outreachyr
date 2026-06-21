@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FileText,
@@ -7,12 +8,14 @@ import {
   Pencil,
   Plus,
   Search,
+  SendHorizontal,
   Trash2,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Empty,
@@ -313,9 +316,23 @@ export function TemplatesView() {
                   <p className="line-clamp-4 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                     {row.body_text}
                   </p>
-                  <p className="shrink-0 pt-1 text-xs text-muted-foreground">
-                    Updated {formatUpdatedAt(row.updated_at)}
-                  </p>
+                  <div className="flex shrink-0 items-center justify-between gap-3 pt-1">
+                    <p className="text-xs text-muted-foreground">
+                      Updated {formatUpdatedAt(row.updated_at)}
+                    </p>
+                    <Link
+                      href={`/dashboard/new?template=${encodeURIComponent(
+                        row.id
+                      )}`}
+                      className={cn(
+                        buttonVariants({ variant: "outline", size: "sm" }),
+                        "min-h-8 gap-1.5 rounded-xl px-3 text-xs text-primary"
+                      )}
+                    >
+                      <SendHorizontal className="size-3.5" aria-hidden />
+                      Use in campaign
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
             ))}

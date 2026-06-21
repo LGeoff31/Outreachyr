@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -10,14 +11,16 @@ import {
   RefreshCw,
   Search,
   Save,
+  SendHorizontal,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Empty,
@@ -84,19 +87,6 @@ function rowToResumeRecord(row: UserResumeRow): ResumeRecord {
     storagePath: row.resume_storage_path,
     profile: row.profile,
   };
-}
-
-function resumeProfileSummary(profile?: UserResumeProfile) {
-  if (!profile) return null;
-  if (profile.parse_status === "failed") return "Profile parse failed";
-  if (profile.parse_status !== "ready") return "Profile parsing";
-  if (!profile.user_confirmed_at) return "Review parsed fields";
-  const parts = [
-    profile.primary_school_name,
-    profile.primary_major,
-    profile.grad_year ? String(profile.grad_year) : null,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" - ") : null;
 }
 
 function resumeProfileParseFailureDetail(profile?: UserResumeProfile) {
@@ -499,7 +489,7 @@ export function ResumesView({
                 resume={resume}
                 deleting={deletingId === resume.id}
                 onPreview={(url) => void openResumePreview(resume, url)}
-                 onDelete={() => void handleDelete(resume)}
+                onDelete={() => setResumeToDelete(resume)}
                 onEdit={() => {
                   setProfileError(null);
                   setPendingReviewResumeId(
@@ -662,7 +652,6 @@ function ResumeCard({
 }) {
   const { url, loading } = useResumeThumbnailUrl(resume);
   const canPreview = Boolean(url);
-  const profileSummary = resumeProfileSummary(resume.profile);
 
   return (
     <Card className="flex h-full flex-col gap-0 rounded-2xl bg-card py-0 shadow-sm">
@@ -730,14 +719,21 @@ function ResumeCard({
           )}
         </button>
 
-        <p className="shrink-0 pt-1 text-xs text-muted-foreground">
-          Updated {formatUpdatedAt(resume.updatedAt)}
-        </p>
-        {profileSummary ? (
-          <p className="shrink-0 text-xs text-muted-foreground">
-            {profileSummary}
+        <div className="flex shrink-0 items-center justify-between gap-3 pt-1">
+          <p className="text-xs text-muted-foreground">
+            Updated {formatUpdatedAt(resume.updatedAt)}
           </p>
-        ) : null}
+          <Link
+            href={`/dashboard/new?resume=${encodeURIComponent(resume.id)}`}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "min-h-8 gap-1.5 rounded-xl px-3 text-xs text-primary"
+            )}
+          >
+            <SendHorizontal className="size-3.5" aria-hidden />
+            Use in campaign
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );
