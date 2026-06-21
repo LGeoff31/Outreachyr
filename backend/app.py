@@ -359,6 +359,8 @@ def _run_send(
     resume_bytes: bytes | None,
     resume_filename: str,
     resume_storage_path: str | None = None,
+    resume_profile_school: str | None = None,
+    resume_profile_school_normalized: str | None = None,
 ):
     company = company.strip()
     if test_mode:
@@ -372,7 +374,11 @@ def _run_send(
             )
 
         try:
-            people = outreach.discover(company)
+            people = outreach.discover(
+                company,
+                school_name=resume_profile_school,
+                school_normalized=resume_profile_school_normalized,
+            )
         except RuntimeError as e:
             return JSONResponse(
                 status_code=502,
@@ -421,6 +427,8 @@ class SendJsonRequest(BaseModel):
     subject: str = Field("")
     body_text: str = Field("")
     resume_storage_path: str = Field("")
+    resume_profile_school: str = Field("")
+    resume_profile_school_normalized: str = Field("")
 
 
 class GoogleSessionRequest(BaseModel):
@@ -584,6 +592,8 @@ async def api_send_multipart(
     body_text: str = Form(""),
     resume: UploadFile | None = File(None),
     resume_storage_path: str = Form(""),
+    resume_profile_school: str = Form(""),
+    resume_profile_school_normalized: str = Form(""),
 ):
     rbytes: bytes | None = None
     rname = "resume.pdf"
@@ -600,6 +610,10 @@ async def api_send_multipart(
         resume_bytes=rbytes,
         resume_filename=rname,
         resume_storage_path=resume_storage_path.strip() or None,
+        resume_profile_school=resume_profile_school.strip() or None,
+        resume_profile_school_normalized=(
+            resume_profile_school_normalized.strip() or None
+        ),
     )
 
 
@@ -615,6 +629,10 @@ def api_send_json(request: Request, body: SendJsonRequest):
         resume_bytes=None,
         resume_filename="resume.pdf",
         resume_storage_path=body.resume_storage_path.strip() or None,
+        resume_profile_school=body.resume_profile_school.strip() or None,
+        resume_profile_school_normalized=(
+            body.resume_profile_school_normalized.strip() or None
+        ),
     )
 
 

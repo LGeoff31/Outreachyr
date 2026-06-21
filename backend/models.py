@@ -14,7 +14,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -177,6 +177,74 @@ class UserResume(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    profile: Mapped[ResumeProfile | None] = relationship(
+        back_populates="resume",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class ResumeProfile(Base):
+    __tablename__ = "resume_profiles"
+
+    resume_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user_resumes.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    raw_text: Mapped[str | None] = mapped_column(Text)
+    raw_text_hash: Mapped[str | None] = mapped_column(Text)
+    parse_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'pending'"),
+    )
+    parser_version: Mapped[str] = mapped_column(Text, nullable=False)
+    parse_error: Mapped[str | None] = mapped_column(Text)
+    primary_school_name: Mapped[str | None] = mapped_column(Text)
+    primary_school_normalized: Mapped[str | None] = mapped_column(Text)
+    primary_major: Mapped[str | None] = mapped_column(Text)
+    grad_year: Mapped[int | None] = mapped_column(Integer)
+    skills: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    education_json: Mapped[list[dict]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    experience_json: Mapped[list[dict]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    projects_json: Mapped[list[dict]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    links_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    resume: Mapped[UserResume] = relationship(back_populates="profile")
 
 
 class CampaignRecipient(Base):

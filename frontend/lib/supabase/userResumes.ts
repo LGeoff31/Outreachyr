@@ -2,6 +2,19 @@ import { createClient } from "@/lib/supabase/client";
 
 export const USER_RESUMES_BUCKET = "resumes";
 
+export type UserResumeProfile = {
+  parse_status: "pending" | "ready" | "failed";
+  primary_school_name: string | null;
+  primary_school_normalized: string | null;
+  primary_major: string | null;
+  grad_year: number | null;
+  skills: string[];
+  education: unknown[];
+  experience: unknown[];
+  projects: unknown[];
+  links: unknown[];
+};
+
 export type UserResumeRow = {
   id: string;
   owner_id: string;
@@ -15,6 +28,7 @@ export type UserResumeRow = {
   status: string;
   created_at: string;
   updated_at: string;
+  profile?: UserResumeProfile;
 };
 
 /** Bearer headers for `/api/user-resumes/*` (exported for preview download). */

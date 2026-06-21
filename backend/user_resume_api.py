@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated, Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -14,14 +16,16 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from config import supabase_publishable_key, supabase_url
 from database import make_session_factory
-from models import UserResume
+from models import ResumeProfile, UserResume
+from resume_profile_parser import PARSER_VERSION, parse_resume_pdf
 from supabase_jwt import verify_supabase_access_token
 
 router = APIRouter(prefix="/api", tags=["user-resumes"])
+logger = logging.getLogger(__name__)
 
 _sm = None
 
@@ -194,8 +198,23 @@ def storage_create_signed_url(access_token: str, object_path: str) -> str:
     return str(signed)
 
 
-def _row_json(r: UserResume) -> dict[str, Any]:
+def _profile_json(profile: ResumeProfile) -> dict[str, Any]:
     return {
+        "parse_status": profile.parse_status,
+        "primary_school_name": profile.primary_school_name,
+        "primary_school_normalized": profile.primary_school_normalized,
+        "primary_major": profile.primary_major,
+        "grad_year": profile.grad_year,
+        "skills": profile.skills or [],
+        "education": profile.education_json or [],
+        "experience": profile.experience_json or [],
+        "projects": profile.projects_json or [],
+        "links": profile.links_json or [],
+    }
+
+
+def _row_json(r: UserResume) -> dict[str, Any]:
+    payload = {
         "id": str(r.id),
         "owner_id": str(r.owner_id),
         "resume_storage_path": r.resume_storage_path,
@@ -209,6 +228,34 @@ def _row_json(r: UserResume) -> dict[str, Any]:
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
     }
+    profile = getattr(r, "profile", None)
+    if profile is not None:
+        payload["profile"] = _profile_json(profile)
+    return payload
+
+
+def _build_resume_profile_row(resume_id: uuid.UUID, data: bytes) -> ResumeProfile:
+    parsed = parse_resume_pdf(data)
+    if parsed.parse_status == "failed":
+        logger.warning("Resume profile parsing failed for resume %s", resume_id)
+    return ResumeProfile(
+        resume_id=resume_id,
+        raw_text=parsed.raw_text,
+        raw_text_hash=parsed.raw_text_hash,
+        parse_status=parsed.parse_status,
+        parser_version=PARSER_VERSION,
+        parse_error=parsed.parse_error,
+        primary_school_name=parsed.primary_school_name,
+        primary_school_normalized=parsed.primary_school_normalized,
+        primary_major=parsed.primary_major,
+        grad_year=parsed.grad_year,
+        skills=parsed.skills,
+        education_json=parsed.education,
+        experience_json=parsed.experience,
+        projects_json=parsed.projects,
+        links_json=parsed.links,
+        parsed_at=datetime.now(timezone.utc),
+    )
 
 
 @router.get("/user-resumes")
@@ -220,6 +267,7 @@ def list_user_resumes(
     rows = (
         session.execute(
             select(UserResume)
+            .options(selectinload(UserResume.profile))
             .where(UserResume.owner_id == uid)
             .order_by(UserResume.updated_at.desc())
         )
@@ -264,6 +312,7 @@ async def upload_user_resume(
         is_default=False,
         status="Ready",
     )
+    row.profile = _build_resume_profile_row(row.id, data)
     session.add(row)
     try:
         session.commit()

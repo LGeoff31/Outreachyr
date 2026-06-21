@@ -25,6 +25,7 @@ import {
   fetchUserResumeRows,
   resumeApiAuthHeaders,
   uploadUserResumePdf,
+  type UserResumeProfile,
   type UserResumeRow,
 } from "@/lib/supabase/userResumes";
 
@@ -36,6 +37,7 @@ type ResumeRecord = {
   updatedAt: string;
   storagePath?: string;
   previewUrl?: string;
+  profile?: UserResumeProfile;
 };
 
 type ActiveResumePreview = { name: string; url: string; resumeId: string };
@@ -68,7 +70,20 @@ function rowToResumeRecord(row: UserResumeRow): ResumeRecord {
     usedInCampaigns: row.used_in_campaigns,
     updatedAt: row.updated_at,
     storagePath: row.resume_storage_path,
+    profile: row.profile,
   };
+}
+
+function resumeProfileSummary(profile?: UserResumeProfile) {
+  if (!profile) return null;
+  if (profile.parse_status === "failed") return "Profile parse failed";
+  if (profile.parse_status !== "ready") return "Profile parsing";
+  const parts = [
+    profile.primary_school_name,
+    profile.primary_major,
+    profile.grad_year ? String(profile.grad_year) : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" - ") : null;
 }
 
 export function ResumesView({
@@ -484,6 +499,7 @@ function ResumeCard({
 }) {
   const { url, loading } = useResumeThumbnailUrl(resume);
   const canPreview = Boolean(url);
+  const profileSummary = resumeProfileSummary(resume.profile);
 
   return (
     <Card className="flex h-full flex-col gap-0 rounded-2xl bg-card py-0 shadow-sm">
@@ -542,6 +558,11 @@ function ResumeCard({
         <p className="shrink-0 pt-1 text-xs text-muted-foreground">
           Updated {formatUpdatedAt(resume.updatedAt)}
         </p>
+        {profileSummary ? (
+          <p className="shrink-0 text-xs text-muted-foreground">
+            {profileSummary}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
