@@ -28,7 +28,19 @@ from sqlalchemy.orm import Session, selectinload
 
 from config import supabase_publishable_key, supabase_url
 from database import make_session_factory
-from models import ResumeProfile, UserResume
+from models import (
+    ResumeProfile,
+    ResumeProfileEducation,
+    ResumeProfileExperience,
+    ResumeProfileExperienceHighlight,
+    ResumeProfileExperienceSkill,
+    ResumeProfileLink,
+    ResumeProfileProject,
+    ResumeProfileProjectLink,
+    ResumeProfileProjectSkill,
+    ResumeProfileSkill,
+    UserResume,
+)
 from resume_profile_parser import (
     PARSER_VERSION,
     normalize_school_name,
@@ -210,18 +222,104 @@ def storage_create_signed_url(access_token: str, object_path: str) -> str:
     return str(signed)
 
 
+def _ordered(rows):
+    return sorted(rows or [], key=lambda row: getattr(row, "position", 0) or 0)
+
+
+def _assign_present(payload: dict[str, Any], key: str, value: Any) -> None:
+    if value is None:
+        return
+    if isinstance(value, str) and not value.strip():
+        return
+    payload[key] = value
+
+
+def _string_values(rows, attr: str) -> list[str]:
+    out: list[str] = []
+    for row in _ordered(rows):
+        value = getattr(row, attr, None)
+        if isinstance(value, str) and value.strip():
+            out.append(value)
+    return out
+
+
+def _education_json(rows) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in _ordered(rows):
+        item: dict[str, Any] = {}
+        _assign_present(item, "school", getattr(row, "school", None))
+        _assign_present(
+            item,
+            "normalized_school",
+            getattr(row, "normalized_school", None),
+        )
+        _assign_present(item, "degree", getattr(row, "degree", None))
+        _assign_present(item, "major", getattr(row, "major", None))
+        _assign_present(item, "start_year", getattr(row, "start_year", None))
+        _assign_present(item, "end_year", getattr(row, "end_year", None))
+        _assign_present(item, "is_current", getattr(row, "is_current", None))
+        _assign_present(item, "confidence", getattr(row, "confidence", None))
+        if item:
+            out.append(item)
+    return out
+
+
+def _experience_json(rows) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in _ordered(rows):
+        item: dict[str, Any] = {}
+        _assign_present(item, "title", getattr(row, "title", None))
+        _assign_present(item, "company", getattr(row, "company", None))
+        _assign_present(item, "location", getattr(row, "location", None))
+        _assign_present(item, "start_date", getattr(row, "start_date", None))
+        _assign_present(item, "end_date", getattr(row, "end_date", None))
+        _assign_present(item, "is_current", getattr(row, "is_current", None))
+        _assign_present(item, "description", getattr(row, "description", None))
+        highlights = _string_values(getattr(row, "highlights", []), "text")
+        skills = _string_values(getattr(row, "skills", []), "name")
+        if highlights:
+            item["highlights"] = highlights
+        if skills:
+            item["skills"] = skills
+        _assign_present(item, "confidence", getattr(row, "confidence", None))
+        if item:
+            out.append(item)
+    return out
+
+
+def _project_json(rows) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in _ordered(rows):
+        item: dict[str, Any] = {}
+        _assign_present(item, "name", getattr(row, "name", None))
+        _assign_present(item, "description", getattr(row, "description", None))
+        _assign_present(item, "start_date", getattr(row, "start_date", None))
+        _assign_present(item, "end_date", getattr(row, "end_date", None))
+        skills = _string_values(getattr(row, "skills", []), "name")
+        links = _string_values(getattr(row, "links", []), "url")
+        if skills:
+            item["skills"] = skills
+        if links:
+            item["links"] = links
+        _assign_present(item, "confidence", getattr(row, "confidence", None))
+        if item:
+            out.append(item)
+    return out
+
+
 def _profile_json(profile: ResumeProfile) -> dict[str, Any]:
     return {
         "parse_status": profile.parse_status,
+        "parse_error": getattr(profile, "parse_error", None),
         "primary_school_name": profile.primary_school_name,
         "primary_school_normalized": profile.primary_school_normalized,
         "primary_major": profile.primary_major,
         "grad_year": profile.grad_year,
-        "skills": profile.skills or [],
-        "education": profile.education_json or [],
-        "experience": profile.experience_json or [],
-        "projects": profile.projects_json or [],
-        "links": profile.links_json or [],
+        "skills": _string_values(getattr(profile, "skills", []), "name"),
+        "education": _education_json(getattr(profile, "education", [])),
+        "experience": _experience_json(getattr(profile, "experience", [])),
+        "projects": _project_json(getattr(profile, "projects", [])),
+        "links": _string_values(getattr(profile, "links", []), "url"),
         "user_confirmed_at": (
             profile.user_confirmed_at.isoformat()
             if getattr(profile, "user_confirmed_at", None)
@@ -251,6 +349,27 @@ def _row_json(r: UserResume) -> dict[str, Any]:
     return payload
 
 
+def _resume_profile_load_options():
+    profile_load = selectinload(UserResume.profile)
+    return (
+        profile_load.selectinload(ResumeProfile.skills),
+        profile_load.selectinload(ResumeProfile.education),
+        profile_load.selectinload(ResumeProfile.experience).selectinload(
+            ResumeProfileExperience.highlights
+        ),
+        profile_load.selectinload(ResumeProfile.experience).selectinload(
+            ResumeProfileExperience.skills
+        ),
+        profile_load.selectinload(ResumeProfile.projects).selectinload(
+            ResumeProfileProject.skills
+        ),
+        profile_load.selectinload(ResumeProfile.projects).selectinload(
+            ResumeProfileProject.links
+        ),
+        profile_load.selectinload(ResumeProfile.links),
+    )
+
+
 def _pending_resume_profile_row(resume_id: uuid.UUID) -> ResumeProfile:
     return ResumeProfile(
         resume_id=resume_id,
@@ -259,11 +378,155 @@ def _pending_resume_profile_row(resume_id: uuid.UUID) -> ResumeProfile:
         parse_status="pending",
         parser_version=PARSER_VERSION,
         skills=[],
-        education_json=[],
-        experience_json=[],
-        projects_json=[],
-        links_json=[],
+        education=[],
+        experience=[],
+        projects=[],
+        links=[],
     )
+
+
+def _record_text(record: dict[str, Any], key: str) -> str | None:
+    value = record.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _record_int(record: dict[str, Any], key: str) -> int | None:
+    value = record.get(key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_float(record: dict[str, Any], key: str) -> float | None:
+    value = record.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _record_bool(record: dict[str, Any], key: str) -> bool | None:
+    value = record.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        clean = value.strip().lower()
+        if clean in {"true", "1", "yes"}:
+            return True
+        if clean in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _record_string_list(record: dict[str, Any], key: str) -> list[str]:
+    value = record.get(key)
+    if isinstance(value, list):
+        return _clean_string_list([str(part) for part in value])
+    if isinstance(value, str):
+        return _clean_string_list([value])
+    return []
+
+
+def _skill_rows(values: list[str]) -> list[ResumeProfileSkill]:
+    return [
+        ResumeProfileSkill(position=position, name=value)
+        for position, value in enumerate(_clean_string_list(values))
+    ]
+
+
+def _link_rows(values: list[str]) -> list[ResumeProfileLink]:
+    return [
+        ResumeProfileLink(position=position, url=value)
+        for position, value in enumerate(_clean_string_list(values))
+    ]
+
+
+def _education_rows(values: list[dict[str, Any]]) -> list[ResumeProfileEducation]:
+    rows: list[ResumeProfileEducation] = []
+    for position, record in enumerate(_clean_dict_list(values)):
+        school = _record_text(record, "school")
+        normalized_school = _record_text(record, "normalized_school")
+        if school and not normalized_school:
+            normalized_school = normalize_school_name(school)
+        rows.append(
+            ResumeProfileEducation(
+                position=position,
+                school=school,
+                normalized_school=normalized_school,
+                degree=_record_text(record, "degree"),
+                major=_record_text(record, "major"),
+                start_year=_record_int(record, "start_year"),
+                end_year=_record_int(record, "end_year"),
+                is_current=_record_bool(record, "is_current"),
+                confidence=_record_float(record, "confidence"),
+            )
+        )
+    return rows
+
+
+def _experience_rows(values: list[dict[str, Any]]) -> list[ResumeProfileExperience]:
+    rows: list[ResumeProfileExperience] = []
+    for position, record in enumerate(_clean_dict_list(values)):
+        rows.append(
+            ResumeProfileExperience(
+                position=position,
+                title=_record_text(record, "title"),
+                company=_record_text(record, "company"),
+                location=_record_text(record, "location"),
+                start_date=_record_text(record, "start_date"),
+                end_date=_record_text(record, "end_date"),
+                is_current=_record_bool(record, "is_current"),
+                description=_record_text(record, "description"),
+                confidence=_record_float(record, "confidence"),
+                highlights=[
+                    ResumeProfileExperienceHighlight(position=index, text=value)
+                    for index, value in enumerate(
+                        _record_string_list(record, "highlights")
+                    )
+                ],
+                skills=[
+                    ResumeProfileExperienceSkill(position=index, name=value)
+                    for index, value in enumerate(
+                        _record_string_list(record, "skills")
+                    )
+                ],
+            )
+        )
+    return rows
+
+
+def _project_rows(values: list[dict[str, Any]]) -> list[ResumeProfileProject]:
+    rows: list[ResumeProfileProject] = []
+    for position, record in enumerate(_clean_dict_list(values)):
+        rows.append(
+            ResumeProfileProject(
+                position=position,
+                name=_record_text(record, "name"),
+                description=_record_text(record, "description"),
+                start_date=_record_text(record, "start_date"),
+                end_date=_record_text(record, "end_date"),
+                confidence=_record_float(record, "confidence"),
+                skills=[
+                    ResumeProfileProjectSkill(position=index, name=value)
+                    for index, value in enumerate(
+                        _record_string_list(record, "skills")
+                    )
+                ],
+                links=[
+                    ResumeProfileProjectLink(position=index, url=value)
+                    for index, value in enumerate(_record_string_list(record, "links"))
+                ],
+            )
+        )
+    return rows
 
 
 def _apply_parsed_resume_profile(
@@ -281,12 +544,30 @@ def _apply_parsed_resume_profile(
     profile.primary_school_normalized = parsed.primary_school_normalized
     profile.primary_major = parsed.primary_major
     profile.grad_year = parsed.grad_year
-    profile.skills = parsed.skills
-    profile.education_json = parsed.education
-    profile.experience_json = parsed.experience
-    profile.projects_json = parsed.projects
-    profile.links_json = parsed.links
+    profile.skills = _skill_rows(parsed.skills)
+    profile.education = _education_rows(parsed.education)
+    profile.experience = _experience_rows(parsed.experience)
+    profile.projects = _project_rows(parsed.projects)
+    profile.links = _link_rows(parsed.links)
     profile.parsed_at = datetime.now(timezone.utc)
+
+
+def _reset_resume_profile_for_retry(profile: ResumeProfile) -> None:
+    profile.raw_text = None
+    profile.raw_text_hash = None
+    profile.parse_status = "pending"
+    profile.parser_version = PARSER_VERSION
+    profile.parse_error = None
+    profile.primary_school_name = None
+    profile.primary_school_normalized = None
+    profile.primary_major = None
+    profile.grad_year = None
+    profile.skills = []
+    profile.education = []
+    profile.experience = []
+    profile.projects = []
+    profile.links = []
+    profile.parsed_at = None
 
 
 def _build_resume_profile_row(resume_id: uuid.UUID, data: bytes) -> ResumeProfile:
@@ -337,7 +618,7 @@ def list_user_resumes(
     rows = (
         session.execute(
             select(UserResume)
-            .options(selectinload(UserResume.profile))
+            .options(*_resume_profile_load_options())
             .where(UserResume.owner_id == uid)
             .order_by(UserResume.updated_at.desc())
         )
@@ -498,11 +779,11 @@ def _apply_profile_patch(
     )
     profile.primary_major = _clean_text(body.primary_major)
     profile.grad_year = body.grad_year
-    profile.skills = _clean_string_list(body.skills)
-    profile.education_json = _clean_dict_list(body.education)
-    profile.experience_json = _clean_dict_list(body.experience)
-    profile.projects_json = _clean_dict_list(body.projects)
-    profile.links_json = _clean_string_list(body.links)
+    profile.skills = _skill_rows(body.skills)
+    profile.education = _education_rows(body.education)
+    profile.experience = _experience_rows(body.experience)
+    profile.projects = _project_rows(body.projects)
+    profile.links = _link_rows(body.links)
     profile.user_confirmed_at = confirmed_at or datetime.now(timezone.utc)
 
 
@@ -516,7 +797,7 @@ def patch_user_resume(
     uid = uuid.UUID(user["id"])
     row = session.execute(
         select(UserResume)
-        .options(selectinload(UserResume.profile))
+        .options(*_resume_profile_load_options())
         .where(UserResume.id == resume_id, UserResume.owner_id == uid)
     ).scalar_one_or_none()
     if row is None:
@@ -535,14 +816,45 @@ def patch_user_resume(
                 parse_status="ready",
                 parser_version=PARSER_VERSION,
                 skills=[],
-                education_json=[],
-                experience_json=[],
-                projects_json=[],
-                links_json=[],
+                education=[],
+                experience=[],
+                projects=[],
+                links=[],
             )
         _apply_profile_patch(row.profile, body.profile)
     session.commit()
     session.refresh(row)
+    return {"row": _row_json(row)}
+
+
+@router.post("/user-resumes/{resume_id}/profile/retry")
+def retry_user_resume_profile_parse(
+    resume_id: uuid.UUID,
+    request: Request,
+    user: Annotated[dict, Depends(require_supabase_user)],
+    session: Annotated[Session, Depends(get_db_session)],
+    background_tasks: BackgroundTasks,
+):
+    uid = uuid.UUID(user["id"])
+    row = session.execute(
+        select(UserResume)
+        .options(*_resume_profile_load_options())
+        .where(UserResume.id == resume_id, UserResume.owner_id == uid)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if row.profile is None:
+        row.profile = _pending_resume_profile_row(row.id)
+    if getattr(row.profile, "user_confirmed_at", None):
+        raise HTTPException(status_code=409, detail="Profile already confirmed")
+
+    access_token = request.state.supabase_access_token
+    data = storage_download_object(access_token, row.resume_storage_path)
+    _reset_resume_profile_for_retry(row.profile)
+    session.commit()
+    session.refresh(row)
+
+    background_tasks.add_task(_parse_resume_profile_background, row.id, data)
     return {"row": _row_json(row)}
 
 

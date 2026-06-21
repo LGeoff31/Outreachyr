@@ -4,6 +4,7 @@ export const USER_RESUMES_BUCKET = "resumes";
 
 export type UserResumeProfile = {
   parse_status: "pending" | "ready" | "failed";
+  parse_error: string | null;
   primary_school_name: string | null;
   primary_school_normalized: string | null;
   primary_major: string | null;
@@ -173,6 +174,31 @@ export async function updateUserResumeProfile(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ profile }),
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      return { row: null, error: new Error(text || res.statusText) };
+    }
+    const data = (await res.json()) as { row: UserResumeRow };
+    return { row: data.row ?? null, error: null };
+  } catch (e) {
+    return {
+      row: null,
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
+export async function retryUserResumeProfileParse(
+  resumeId: string
+): Promise<{ row: UserResumeRow | null; error: Error | null }> {
+  try {
+    const res = await fetch(
+      `/api/user-resumes/${encodeURIComponent(resumeId)}/profile/retry`,
+      {
+        method: "POST",
+        headers: await resumeApiAuthHeaders(),
       }
     );
     if (!res.ok) {

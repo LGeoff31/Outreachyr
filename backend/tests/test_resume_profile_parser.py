@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import types
 import unittest
 from unittest.mock import patch
 
@@ -109,7 +110,7 @@ class ResumeProfileParserTests(unittest.TestCase):
         self.assertEqual(profile.experience, [])
         self.assertEqual(profile.projects, [])
 
-    def test_resume_ai_model_uses_gpt_oss_when_override_lacks_json_schema(self) -> None:
+    def test_resume_ai_model_uses_default_when_override_is_not_allowed(self) -> None:
         with patch.dict(
             "os.environ",
             {"RESUME_PROFILE_AI_MODEL": "llama-3.1-8b-instant"},
@@ -169,7 +170,95 @@ class ResumeProfileParserTests(unittest.TestCase):
         self.assertEqual(profile.experience[0].skills, ["Kubernetes", "AWS"])
         self.assertEqual(profile.projects[0].skills, ["Python", "GCP"])
 
-    def test_parse_resume_text_uses_langchain_groq_schema_when_configured(self) -> None:
+    def test_langchain_groq_uses_strict_json_schema_structured_output(self) -> None:
+        calls: dict[str, object] = {}
+        ai_profile = parser.AiResumeProfile(
+            primary_school_name="University of Waterloo",
+            primary_major="Computer Science",
+            grad_year=2027,
+            skills=[],
+            education=[],
+            experience=[],
+            projects=[],
+            links=[],
+        )
+
+        class FakeStructuredLlm:
+            def invoke(self, messages):
+                calls["messages"] = messages
+                return ai_profile
+
+        class FakeChatGroq:
+            def __init__(self, **kwargs):
+                calls["init"] = kwargs
+
+            def with_structured_output(self, schema, **kwargs):
+                calls["schema"] = schema
+                calls["structured_output"] = kwargs
+                return FakeStructuredLlm()
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {"langchain_groq": types.SimpleNamespace(ChatGroq=FakeChatGroq)},
+            ),
+            patch.dict(
+                "os.environ",
+                {"RESUME_PROFILE_AI_MODEL": parser.DEFAULT_AI_MODEL},
+                clear=False,
+            ),
+        ):
+            result = parser._parse_resume_text_with_langchain_groq("resume text")
+
+        self.assertIs(result, ai_profile)
+        self.assertEqual(calls["init"]["max_tokens"], 4096)
+        self.assertEqual(calls["schema"], parser._ai_resume_profile_strict_schema())
+        self.assertEqual(
+            calls["structured_output"],
+            {"method": "json_schema", "strict": True},
+        )
+
+    def test_resume_ai_max_tokens_uses_configured_positive_integer(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"RESUME_PROFILE_AI_MAX_TOKENS": "4096"},
+            clear=False,
+        ):
+            self.assertEqual(parser._resume_ai_max_tokens(), 4096)
+
+    def test_resume_ai_max_tokens_defaults_when_invalid(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"RESUME_PROFILE_AI_MAX_TOKENS": "not-a-number"},
+            clear=False,
+        ):
+            with self.assertLogs(parser.logger, level="WARNING"):
+                self.assertEqual(parser._resume_ai_max_tokens(), 4096)
+
+    def test_ai_resume_profile_strict_schema_requires_all_nested_fields(self) -> None:
+        schema = parser._ai_resume_profile_strict_schema()
+
+        def assert_object_schema(node: dict[str, object]) -> None:
+            self.assertNotIn("default", node)
+            if node.get("type") == "object":
+                properties = node.get("properties")
+                self.assertIsInstance(properties, dict)
+                self.assertEqual(node.get("additionalProperties"), False)
+                self.assertEqual(
+                    set(node.get("required") or []),
+                    set(properties or {}),
+                )
+            for value in node.values():
+                if isinstance(value, dict):
+                    assert_object_schema(value)
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, dict):
+                            assert_object_schema(item)
+
+        assert_object_schema(schema)
+
+    def test_parse_resume_text_uses_langchain_groq_when_configured(self) -> None:
         ai_profile = parser.AiResumeProfile(
             primary_school_name="University of Waterloo",
             primary_major="Computer Science",

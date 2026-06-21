@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
   Pencil,
   FileText,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
   Save,
   Trash2,
@@ -13,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -29,6 +32,7 @@ import {
   deleteUserResume,
   fetchUserResumeRows,
   resumeApiAuthHeaders,
+  retryUserResumeProfileParse,
   uploadUserResumePdf,
   updateUserResumeProfile,
   type UserResumeProfile,
@@ -94,6 +98,12 @@ function resumeProfileSummary(profile?: UserResumeProfile) {
   return parts.length > 0 ? parts.join(" - ") : null;
 }
 
+function resumeProfileParseFailureDetail(profile?: UserResumeProfile) {
+  const error = profile?.parse_error?.trim();
+  if (!error) return null;
+  return error.length > 240 ? `${error.slice(0, 237)}...` : error;
+}
+
 export function ResumesView({
   initialResumes = emptyResumes,
 }: {
@@ -108,6 +118,7 @@ export function ResumesView({
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [retryingProfile, setRetryingProfile] = useState(false);
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activePreview, setActivePreview] = useState<ActiveResumePreview | null>(
@@ -186,10 +197,14 @@ export function ResumesView({
     () => resumes.some((resume) => resume.profile?.parse_status === "pending"),
     [resumes]
   );
+  const editingResumeId = editingResume?.id ?? null;
+  const activeReviewResumeId =
+    pendingReviewResumeId ??
+    (editingResume?.profile?.parse_status === "pending" ? editingResume.id : null);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    if (!hasPendingProfiles && !pendingReviewResumeId) return;
+    if (!hasPendingProfiles && !activeReviewResumeId) return;
 
     let cancelled = false;
     const timer = window.setInterval(() => {
@@ -198,15 +213,18 @@ export function ResumesView({
         if (cancelled || error) return;
         const nextResumes = rows.map(rowToResumeRecord);
         setResumes(nextResumes);
-        if (!pendingReviewResumeId) return;
+        if (!activeReviewResumeId) return;
         const reviewResume = nextResumes.find(
-          (resume) => resume.id === pendingReviewResumeId
+          (resume) => resume.id === activeReviewResumeId
         );
+        if (!reviewResume?.profile) return;
         if (
-          reviewResume?.profile &&
+          reviewResume.id === editingResumeId ||
           reviewResume.profile.parse_status !== "pending"
         ) {
           setEditingResume(reviewResume);
+        }
+        if (reviewResume.profile.parse_status !== "pending") {
           setPendingReviewResumeId(null);
           setProfileError(null);
         }
@@ -217,7 +235,7 @@ export function ResumesView({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [hasPendingProfiles, pendingReviewResumeId]);
+  }, [activeReviewResumeId, editingResumeId, hasPendingProfiles]);
 
   const visibleResumes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -326,10 +344,11 @@ export function ResumesView({
         }
         if (added.length > 0) {
           setResumes((current) => [...added, ...current]);
+          setEditingResume(added[0]);
           if (added[0].profile?.parse_status === "pending") {
             setPendingReviewResumeId(added[0].id);
           } else {
-            setEditingResume(added[0]);
+            setPendingReviewResumeId(null);
           }
           setProfileError(null);
         }
@@ -375,6 +394,25 @@ export function ResumesView({
     );
     setPendingReviewResumeId(null);
     setEditingResume(null);
+  }
+
+  async function handleRetryProfileParse(resume: ResumeRecord) {
+    setRetryingProfile(true);
+    setProfileError(null);
+    const { row, error } = await retryUserResumeProfileParse(resume.id);
+    setRetryingProfile(false);
+    if (error || !row) {
+      setProfileError(error?.message ?? "Could not retry parsing.");
+      return;
+    }
+    const nextResume = rowToResumeRecord(row);
+    setResumes((current) =>
+      current.map((item) => (item.id === nextResume.id ? nextResume : item))
+    );
+    setEditingResume(nextResume);
+    if (nextResume.profile?.parse_status === "pending") {
+      setPendingReviewResumeId(nextResume.id);
+    }
   }
 
   return (
@@ -463,7 +501,9 @@ export function ResumesView({
                 onDelete={() => void handleDelete(resume)}
                 onEdit={() => {
                   setProfileError(null);
-                  setPendingReviewResumeId(null);
+                  setPendingReviewResumeId(
+                    resume.profile?.parse_status === "pending" ? resume.id : null
+                  );
                   setEditingResume(resume);
                 }}
               />
@@ -496,16 +536,18 @@ export function ResumesView({
 
       {editingResume ? (
         <ResumeProfileEditor
-          key={editingResume.id}
+          key={`${editingResume.id}-${editingResume.profile?.parse_status ?? "none"}`}
           resume={editingResume}
           saving={savingProfile}
+          retrying={retryingProfile}
           error={profileError}
           onClose={() => {
-            if (!savingProfile) {
+            if (!savingProfile && !retryingProfile) {
               setEditingResume(null);
               setProfileError(null);
             }
           }}
+          onRetry={() => void handleRetryProfileParse(editingResume)}
           onSave={(profile) => void handleSaveProfile(editingResume, profile)}
         />
       ) : null}
@@ -726,14 +768,18 @@ function nextProfileDraftId() {
 function ResumeProfileEditor({
   resume,
   saving,
+  retrying,
   error,
   onClose,
+  onRetry,
   onSave,
 }: {
   resume: ResumeRecord;
   saving: boolean;
+  retrying: boolean;
   error: string | null;
   onClose: () => void;
+  onRetry: () => void;
   onSave: (profile: UserResumeProfilePatch) => void;
 }) {
   const profile = resume.profile;
@@ -760,6 +806,10 @@ function ResumeProfileEditor({
 
   const parsedGradYear = parseGradYear(gradYear);
   const gradYearInvalid = gradYear.trim().length > 0 && parsedGradYear == null;
+  const isParsing = profile?.parse_status === "pending";
+  const parsingFailed = profile?.parse_status === "failed";
+  const parseFailureDetail =
+    parsingFailed ? resumeProfileParseFailureDetail(profile) : null;
 
   function saveProfile() {
     onSave({
@@ -794,7 +844,7 @@ function ResumeProfileEditor({
               id="resume-profile-editor-title"
               className="truncate text-base font-semibold text-foreground"
             >
-              Review parsed fields
+              {isParsing ? "Parsing resume" : "Review parsed fields"}
             </h2>
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {resume.name}
@@ -813,92 +863,141 @@ function ResumeProfileEditor({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <TextField label="School" value={school} onChange={setSchool} />
-            <TextField label="Major" value={major} onChange={setMajor} />
-            <TextField
-              label="Grad year"
-              value={gradYear}
-              inputMode="numeric"
-              invalid={gradYearInvalid}
-              onChange={setGradYear}
-            />
-          </div>
+          {isParsing ? (
+            <div
+              className="flex min-h-72 flex-col items-center justify-center gap-3 text-center"
+              aria-live="polite"
+            >
+              <Loader2
+                className="size-8 animate-spin text-primary"
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Parsing resume...
+                </p>
+                <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
+                  We will show the extracted fields here as soon as parsing
+                  finishes.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {parsingFailed ? (
+                <Alert variant="destructive" className="mb-5">
+                  <AlertCircle aria-hidden="true" />
+                  <AlertTitle>Automatic parsing failed</AlertTitle>
+                  <AlertDescription>
+                    <p>
+                      No parsed fields were saved. Fill them manually and save to
+                      confirm this resume.
+                    </p>
+                    {parseFailureDetail ? (
+                      <p className="break-words text-xs">
+                        Reason: {parseFailureDetail}
+                      </p>
+                    ) : null}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
-          <div className="mt-5 grid gap-5">
-            <StringListEditor
-              label="Skills"
-              values={skills}
-              inputValue={skillInput}
-              addLabel="Add skill"
-              onInputChange={setSkillInput}
-              onAdd={(value) => {
-                setSkills((current) => appendUniqueString(current, value));
-                setSkillInput("");
-              }}
-              onRemove={(index) =>
-                setSkills((current) => removeAtIndex(current, index))
-              }
-            />
+              <div className="grid gap-4 sm:grid-cols-3">
+                <TextField label="School" value={school} onChange={setSchool} />
+                <TextField label="Major" value={major} onChange={setMajor} />
+                <TextField
+                  label="Grad year"
+                  value={gradYear}
+                  inputMode="numeric"
+                  invalid={gradYearInvalid}
+                  onChange={setGradYear}
+                />
+              </div>
 
-            <EducationEditor
-              items={education}
-              onAdd={() =>
-                setEducation((current) => [...current, emptyEducationDraft()])
-              }
-              onRemove={(index) =>
-                setEducation((current) => removeAtIndex(current, index))
-              }
-              onChange={(index, patch) =>
-                setEducation((current) =>
-                  updateDraftAtIndex(current, index, patch)
-                )
-              }
-            />
+              <div className="mt-5 grid gap-5">
+                <StringListEditor
+                  label="Skills"
+                  values={skills}
+                  inputValue={skillInput}
+                  addLabel="Add skill"
+                  onInputChange={setSkillInput}
+                  onAdd={(value) => {
+                    setSkills((current) => appendUniqueString(current, value));
+                    setSkillInput("");
+                  }}
+                  onRemove={(index) =>
+                    setSkills((current) => removeAtIndex(current, index))
+                  }
+                />
 
-            <ExperienceEditor
-              items={experience}
-              onAdd={() =>
-                setExperience((current) => [...current, emptyExperienceDraft()])
-              }
-              onRemove={(index) =>
-                setExperience((current) => removeAtIndex(current, index))
-              }
-              onChange={(index, patch) =>
-                setExperience((current) =>
-                  updateDraftAtIndex(current, index, patch)
-                )
-              }
-            />
+                <EducationEditor
+                  items={education}
+                  onAdd={() =>
+                    setEducation((current) => [
+                      ...current,
+                      emptyEducationDraft(),
+                    ])
+                  }
+                  onRemove={(index) =>
+                    setEducation((current) => removeAtIndex(current, index))
+                  }
+                  onChange={(index, patch) =>
+                    setEducation((current) =>
+                      updateDraftAtIndex(current, index, patch)
+                    )
+                  }
+                />
 
-            <ProjectEditor
-              items={projects}
-              onAdd={() =>
-                setProjects((current) => [...current, emptyProjectDraft()])
-              }
-              onRemove={(index) =>
-                setProjects((current) => removeAtIndex(current, index))
-              }
-              onChange={(index, patch) =>
-                setProjects((current) => updateDraftAtIndex(current, index, patch))
-              }
-            />
+                <ExperienceEditor
+                  items={experience}
+                  onAdd={() =>
+                    setExperience((current) => [
+                      ...current,
+                      emptyExperienceDraft(),
+                    ])
+                  }
+                  onRemove={(index) =>
+                    setExperience((current) => removeAtIndex(current, index))
+                  }
+                  onChange={(index, patch) =>
+                    setExperience((current) =>
+                      updateDraftAtIndex(current, index, patch)
+                    )
+                  }
+                />
 
-            <StringListEditor
-              label="Links"
-              values={links}
-              inputValue={linkInput}
-              addLabel="Add link"
-              onInputChange={setLinkInput}
-              onAdd={(value) => {
-                setLinks((current) => appendUniqueString(current, value));
-                setLinkInput("");
-              }}
-              onRemove={(index) =>
-                setLinks((current) => removeAtIndex(current, index))
-              }
-            />
-          </div>
+                <ProjectEditor
+                  items={projects}
+                  onAdd={() =>
+                    setProjects((current) => [...current, emptyProjectDraft()])
+                  }
+                  onRemove={(index) =>
+                    setProjects((current) => removeAtIndex(current, index))
+                  }
+                  onChange={(index, patch) =>
+                    setProjects((current) =>
+                      updateDraftAtIndex(current, index, patch)
+                    )
+                  }
+                />
+
+                <StringListEditor
+                  label="Links"
+                  values={links}
+                  inputValue={linkInput}
+                  addLabel="Add link"
+                  onInputChange={setLinkInput}
+                  onAdd={(value) => {
+                    setLinks((current) => appendUniqueString(current, value));
+                    setLinkInput("");
+                  }}
+                  onRemove={(index) =>
+                    setLinks((current) => removeAtIndex(current, index))
+                  }
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -918,28 +1017,52 @@ function ResumeProfileEditor({
               type="button"
               variant="outline"
               className="rounded-xl"
-              disabled={saving}
+              disabled={saving || retrying}
               onClick={onClose}
             >
-              Cancel
+              {isParsing ? "Close" : "Cancel"}
             </Button>
-            <Button
-              type="button"
-              className="rounded-xl"
-              disabled={saving || gradYearInvalid}
-              onClick={saveProfile}
-            >
-              {saving ? (
-                <Loader2
-                  className="size-4 animate-spin"
-                  data-icon="inline-start"
-                  aria-hidden
-                />
-              ) : (
-                <Save data-icon="inline-start" aria-hidden />
-              )}
-              Save fields
-            </Button>
+            {isParsing ? null : (
+              <>
+                {parsingFailed ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    disabled={saving || retrying}
+                    onClick={onRetry}
+                  >
+                    {retrying ? (
+                      <Loader2
+                        className="size-4 animate-spin"
+                        data-icon="inline-start"
+                        aria-hidden
+                      />
+                    ) : (
+                      <RefreshCw data-icon="inline-start" aria-hidden />
+                    )}
+                    Retry parsing
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  className="rounded-xl"
+                  disabled={saving || retrying || gradYearInvalid}
+                  onClick={saveProfile}
+                >
+                  {saving ? (
+                    <Loader2
+                      className="size-4 animate-spin"
+                      data-icon="inline-start"
+                      aria-hidden
+                    />
+                  ) : (
+                    <Save data-icon="inline-start" aria-hidden />
+                  )}
+                  Save fields
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

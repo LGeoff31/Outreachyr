@@ -11,10 +11,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-AI_PARSER_VERSION = "langchain-groq-v1"
+AI_PARSER_VERSION = "langchain-groq-strict-json-schema-v1"
 PARSER_VERSION = AI_PARSER_VERSION
 DEFAULT_AI_MODEL = "openai/gpt-oss-20b"
-_STRICT_JSON_SCHEMA_MODELS = {
+DEFAULT_AI_MAX_TOKENS = 4096
+_ALLOWED_AI_MODELS = {
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
 }
@@ -364,11 +365,12 @@ def _parse_resume_text_with_langchain_groq(raw_text: str) -> AiResumeProfile:
         temperature=0,
         timeout=timeout,
         max_retries=1,
+        max_tokens=_resume_ai_max_tokens(),
     )
     structured_llm = llm.with_structured_output(
-        AiResumeProfile,
+        _ai_resume_profile_strict_schema(),
         method="json_schema",
-        strict=False,
+        strict=True,
     )
     result = structured_llm.invoke(
         [
@@ -393,19 +395,68 @@ def _parse_resume_text_with_langchain_groq(raw_text: str) -> AiResumeProfile:
     return AiResumeProfile.model_validate(result)
 
 
+def _ai_resume_profile_strict_schema() -> dict[str, Any]:
+    from langchain_core.utils.function_calling import convert_to_json_schema
+
+    schema = convert_to_json_schema(AiResumeProfile, strict=True)
+    _require_all_json_schema_object_properties(schema)
+    return schema
+
+
+def _require_all_json_schema_object_properties(node: Any) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _require_all_json_schema_object_properties(item)
+        return
+    if not isinstance(node, dict):
+        return
+
+    node.pop("default", None)
+    properties = node.get("properties")
+    if isinstance(properties, dict):
+        node["required"] = list(properties)
+        node["additionalProperties"] = False
+
+    for value in node.values():
+        _require_all_json_schema_object_properties(value)
+
+
 def _resume_ai_model() -> str:
     configured = os.environ.get("RESUME_PROFILE_AI_MODEL", "").strip()
     if not configured:
         return DEFAULT_AI_MODEL
-    if configured in _STRICT_JSON_SCHEMA_MODELS:
+    if configured in _ALLOWED_AI_MODELS:
         return configured
     logger.warning(
-        "RESUME_PROFILE_AI_MODEL=%s does not support Groq json_schema output; "
+        "RESUME_PROFILE_AI_MODEL=%s is not allowed for resume profile parsing; "
         "using %s",
         configured,
         DEFAULT_AI_MODEL,
     )
     return DEFAULT_AI_MODEL
+
+
+def _resume_ai_max_tokens() -> int:
+    configured = os.environ.get("RESUME_PROFILE_AI_MAX_TOKENS", "").strip()
+    if not configured:
+        return DEFAULT_AI_MAX_TOKENS
+    try:
+        max_tokens = int(configured)
+    except ValueError:
+        logger.warning(
+            "RESUME_PROFILE_AI_MAX_TOKENS=%s is invalid; using %s",
+            configured,
+            DEFAULT_AI_MAX_TOKENS,
+        )
+        return DEFAULT_AI_MAX_TOKENS
+    if max_tokens <= 0:
+        logger.warning(
+            "RESUME_PROFILE_AI_MAX_TOKENS=%s must be positive; using %s",
+            configured,
+            DEFAULT_AI_MAX_TOKENS,
+        )
+        return DEFAULT_AI_MAX_TOKENS
+    return max_tokens
 
 
 def _profile_from_ai_schema(
