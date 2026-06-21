@@ -32,7 +32,6 @@ from models import (
     ResumeProfile,
     ResumeProfileEducation,
     ResumeProfileExperience,
-    ResumeProfileExperienceHighlight,
     ResumeProfileExperienceSkill,
     ResumeProfileLink,
     ResumeProfileProject,
@@ -275,10 +274,7 @@ def _experience_json(rows) -> list[dict[str, Any]]:
         _assign_present(item, "end_date", getattr(row, "end_date", None))
         _assign_present(item, "is_current", getattr(row, "is_current", None))
         _assign_present(item, "description", getattr(row, "description", None))
-        highlights = _string_values(getattr(row, "highlights", []), "text")
         skills = _string_values(getattr(row, "skills", []), "name")
-        if highlights:
-            item["highlights"] = highlights
         if skills:
             item["skills"] = skills
         _assign_present(item, "confidence", getattr(row, "confidence", None))
@@ -354,9 +350,6 @@ def _resume_profile_load_options():
     return (
         profile_load.selectinload(ResumeProfile.skills),
         profile_load.selectinload(ResumeProfile.education),
-        profile_load.selectinload(ResumeProfile.experience).selectinload(
-            ResumeProfileExperience.highlights
-        ),
         profile_load.selectinload(ResumeProfile.experience).selectinload(
             ResumeProfileExperience.skills
         ),
@@ -486,12 +479,6 @@ def _experience_rows(values: list[dict[str, Any]]) -> list[ResumeProfileExperien
                 is_current=_record_bool(record, "is_current"),
                 description=_record_text(record, "description"),
                 confidence=_record_float(record, "confidence"),
-                highlights=[
-                    ResumeProfileExperienceHighlight(position=index, text=value)
-                    for index, value in enumerate(
-                        _record_string_list(record, "highlights")
-                    )
-                ],
                 skills=[
                     ResumeProfileExperienceSkill(position=index, name=value)
                     for index, value in enumerate(

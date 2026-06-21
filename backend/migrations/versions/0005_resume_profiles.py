@@ -78,15 +78,6 @@ CREATE_TABLE_STATEMENTS = [
     )
     """,
     """
-    create table if not exists public.resume_profile_experience_highlights (
-      id uuid primary key default gen_random_uuid(),
-      experience_id uuid not null references public.resume_profile_experience(id) on delete cascade,
-      position integer not null,
-      text text not null,
-      created_at timestamptz not null default now()
-    )
-    """,
-    """
     create table if not exists public.resume_profile_experience_skills (
       id uuid primary key default gen_random_uuid(),
       experience_id uuid not null references public.resume_profile_experience(id) on delete cascade,
@@ -164,7 +155,6 @@ INDEX_STATEMENTS = [
     "create index if not exists resume_profile_education_resume_idx on public.resume_profile_education(resume_id, position)",
     "create index if not exists resume_profile_education_school_idx on public.resume_profile_education(normalized_school)",
     "create index if not exists resume_profile_experience_resume_idx on public.resume_profile_experience(resume_id, position)",
-    "create index if not exists resume_profile_experience_highlights_parent_idx on public.resume_profile_experience_highlights(experience_id, position)",
     "create index if not exists resume_profile_experience_skills_parent_idx on public.resume_profile_experience_skills(experience_id, position)",
     "create index if not exists resume_profile_projects_resume_idx on public.resume_profile_projects(resume_id, position)",
     "create index if not exists resume_profile_project_skills_parent_idx on public.resume_profile_project_skills(project_id, position)",
@@ -180,7 +170,6 @@ DIRECT_CHILD_TABLES = (
     "resume_profile_links",
 )
 EXPERIENCE_CHILD_TABLES = (
-    "resume_profile_experience_highlights",
     "resume_profile_experience_skills",
 )
 PROJECT_CHILD_TABLES = (

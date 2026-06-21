@@ -1577,23 +1577,6 @@ function textFromRecord(record: Record<string, unknown>, key: string) {
   return String(value);
 }
 
-function listFromRecord(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  if (Array.isArray(value)) return cleanStringList(value);
-  if (value == null) return [];
-  return cleanStringList(parseLineList(String(value)));
-}
-
-function experienceDescriptionFromRecord(record: Record<string, unknown>) {
-  const description = textFromRecord(record, "description").trim();
-  const descriptionKey = description.toLowerCase();
-  const highlights = listFromRecord(record, "highlights").filter(
-    (highlight) => !descriptionKey.includes(highlight.toLowerCase())
-  );
-
-  return [description, ...highlights].filter(Boolean).join("\n");
-}
-
 function boolFromRecord(record: Record<string, unknown>, key: string) {
   return record[key] === true;
 }
@@ -1620,7 +1603,7 @@ function normalizeExperienceDrafts(values: unknown[]) {
     startDate: textFromRecord(record, "start_date"),
     endDate: textFromRecord(record, "end_date"),
     isCurrent: boolFromRecord(record, "is_current"),
-    description: experienceDescriptionFromRecord(record),
+    description: textFromRecord(record, "description"),
     skills:
       textFromRecord(record, "skills") ||
       textFromRecord(record, "technologies"),
