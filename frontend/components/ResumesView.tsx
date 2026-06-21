@@ -11,6 +11,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Empty,
   EmptyDescription,
@@ -86,6 +87,9 @@ export function ResumesView({
   const [uploading, setUploading] = useState(false);
   const [query, setQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [resumeToDelete, setResumeToDelete] = useState<ResumeRecord | null>(
+    null
+  );
   const [activePreview, setActivePreview] = useState<ActiveResumePreview | null>(
     null
   );
@@ -166,14 +170,9 @@ export function ResumesView({
 
   const hasResumes = resumes.length > 0;
 
-  async function handleDelete(resume: ResumeRecord) {
-    if (
-      !window.confirm(
-        `Remove “${resume.name}” from your library? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+  async function confirmDeleteResume() {
+    const resume = resumeToDelete;
+    if (!resume || deletingId) return;
     setActionError(null);
     if (activePreview?.resumeId === resume.id) {
       closeResumePreview();
@@ -184,11 +183,13 @@ export function ResumesView({
         URL.revokeObjectURL(resume.previewUrl);
       }
       setResumes((current) => current.filter((item) => item.id !== resume.id));
+      setResumeToDelete(null);
       return;
     }
     setDeletingId(resume.id);
     const { error } = await deleteUserResume(resume.id);
     setDeletingId(null);
+    setResumeToDelete(null);
     if (error) {
       setActionError(error.message);
       return;
@@ -365,7 +366,7 @@ export function ResumesView({
                 resume={resume}
                 deleting={deletingId === resume.id}
                 onPreview={(url) => void openResumePreview(resume, url)}
-                onDelete={() => void handleDelete(resume)}
+                onDelete={() => setResumeToDelete(resume)}
               />
             ))}
           </section>
@@ -393,6 +394,24 @@ export function ResumesView({
           />
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(resumeToDelete)}
+        title="Remove resume?"
+        description={
+          resumeToDelete
+            ? `Remove "${resumeToDelete.name}" from your library? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Remove resume"
+        confirming={Boolean(
+          resumeToDelete && deletingId === resumeToDelete.id
+        )}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) setResumeToDelete(null);
+        }}
+        onConfirm={() => void confirmDeleteResume()}
+      />
     </main>
   );
 }

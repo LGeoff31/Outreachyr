@@ -28,6 +28,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Empty,
   EmptyDescription,
@@ -71,6 +72,11 @@ type Recipient = {
   greeting_name?: string;
 };
 
+type RecipientRemovalTarget = {
+  index: number;
+  label: string;
+};
+
 type SendResponse = ApiErrorBody & {
   dry_run?: boolean;
   count?: number;
@@ -110,6 +116,8 @@ export function OutreachForm() {
   const [libraryAttachLoading, setLibraryAttachLoading] = useState(false);
   const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [recipientToRemove, setRecipientToRemove] =
+    useState<RecipientRemovalTarget | null>(null);
   const [message, setMessage] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendQueued, setSendQueued] = useState(false);
@@ -398,30 +406,30 @@ export function OutreachForm() {
       const name =
         recipient.greeting_name || recipientNameFromEmail(recipient.email);
       const label = recipient.email || name || "this recipient";
-      if (
-        !window.confirm(
-          `Remove ${label} from this campaign? This recipient will not receive the email.`
-        )
-      ) {
-        return;
-      }
-
-      const nextRecipients = recipients.filter((_, i) => i !== index);
-      setRecipients(nextRecipients);
-      setSendSuccess(false);
-      setSendQueued(false);
-      setErr(false);
-      setErrorDetails(null);
-      setMessage(
-        nextRecipients.length === 0
-          ? `Removed ${label}. No recipients remain.`
-          : `Removed ${label}. ${nextRecipients.length} recipient${
-              nextRecipients.length === 1 ? "" : "s"
-            } remaining.`
-      );
+      setRecipientToRemove({ index, label });
     },
     [recipients]
   );
+
+  const confirmRemoveRecipient = useCallback(() => {
+    const target = recipientToRemove;
+    if (!target) return;
+
+    const recipient = recipients[target.index];
+    if (!recipient) {
+      setRecipientToRemove(null);
+      return;
+    }
+
+    const nextRecipients = recipients.filter((_, i) => i !== target.index);
+    setRecipients(nextRecipients);
+    setSendSuccess(false);
+    setSendQueued(false);
+    setErr(false);
+    setErrorDetails(null);
+    setMessage("");
+    setRecipientToRemove(null);
+  }, [recipientToRemove, recipients]);
 
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
@@ -950,6 +958,21 @@ export function OutreachForm() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(recipientToRemove)}
+        title="Remove recipient?"
+        description={
+          recipientToRemove
+            ? `Remove ${recipientToRemove.label} from this campaign? This recipient will not receive the email.`
+            : ""
+        }
+        confirmLabel="Remove recipient"
+        onOpenChange={(open) => {
+          if (!open) setRecipientToRemove(null);
+        }}
+        onConfirm={confirmRemoveRecipient}
+      />
     </form>
   );
 }
@@ -1215,6 +1238,7 @@ function RecipientReview({
             type="button"
             variant="destructive"
             size="icon-sm"
+            className="rounded-xl"
             disabled={removeDisabled}
             aria-label={`Remove ${recipient.email || name || "recipient"}`}
             title="Remove recipient"
