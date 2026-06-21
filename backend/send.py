@@ -108,14 +108,61 @@ def test_recipients() -> list[tuple[str, str]]:
     return [("geoffrey.lee@test.com", "Casey"), ("electricochy1@gmail.com", "electricochy"), ("lgeoff31@gmail.com", "geoff"), ("geoffrey.lee@cloudkitchens.com", "geoff")]
 
 
-def discover(company: str) -> list[tuple[str, str]]:
+def discover(
+    company: str,
+    *,
+    school_name: str | None = None,
+    school_normalized: str | None = None,
+) -> list[tuple[str, str]]:
     domain = domain_for_company(company)
     if domain is None:
         return []
     api_key = serpapi_api_key()
     domain = domain.lstrip("@").strip()
-    q = f'"{company}" campus recruiter site:linkedin.com/in'
-    return _discover_serpapi(q, domain, api_key)
+    combined: list[tuple[str, str]] = []
+    for q in _recruiter_search_queries(
+        company,
+        school_name=school_name,
+        school_normalized=school_normalized,
+    ):
+        combined.extend(_discover_serpapi(q, domain, api_key))
+
+    seen: set[str] = set()
+    deduped: list[tuple[str, str]] = []
+    for email, name in combined:
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append((email, name))
+    return deduped
+
+
+def _recruiter_search_queries(
+    company: str,
+    *,
+    school_name: str | None = None,
+    school_normalized: str | None = None,
+) -> list[str]:
+    company_clean = company.strip()
+    school = (school_name or school_normalized or "").strip()
+    queries: list[str] = []
+    if school:
+        queries.append(f'"{company_clean}" "{school}" recruiter site:linkedin.com/in')
+    queries.extend(
+        [
+            f'"{company_clean}" campus recruiter site:linkedin.com/in',
+            f'"{company_clean}" university recruiter site:linkedin.com/in',
+        ]
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for q in queries:
+        if q in seen:
+            continue
+        seen.add(q)
+        out.append(q)
+    return out
 
 
 def recipients() -> list[tuple[str, str]]:

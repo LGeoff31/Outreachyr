@@ -439,6 +439,21 @@ export function OutreachForm() {
       if (libraryRow?.resume_storage_path) {
         fd.append("resume_storage_path", libraryRow.resume_storage_path);
       }
+      const confirmedProfile = libraryRow?.profile?.user_confirmed_at
+        ? libraryRow.profile
+        : undefined;
+      if (confirmedProfile?.primary_school_name) {
+        fd.append(
+          "resume_profile_school",
+          confirmedProfile.primary_school_name
+        );
+      }
+      if (confirmedProfile?.primary_school_normalized) {
+        fd.append(
+          "resume_profile_school_normalized",
+          confirmedProfile.primary_school_normalized
+        );
+      }
 
       let sendHeaders: Record<string, string> = {};
       if (isSupabaseConfigured()) {
