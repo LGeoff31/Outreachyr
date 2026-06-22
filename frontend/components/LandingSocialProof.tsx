@@ -161,7 +161,7 @@ export function LandingSocialProof() {
     >
       <p className="mx-auto max-w-2xl px-5 text-center text-base leading-relaxed text-muted-foreground sm:text-lg">
         <span className="font-semibold text-foreground">Candidates</span> have
-        landed 20+ interviews/OA's at companies like
+        landed 20+ interviews/OA&apos;s at companies like
       </p>
 
       <div className="group/marquee relative mt-14 overflow-hidden sm:mt-16">
