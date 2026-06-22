@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  ArrowRight,
   Copy,
   Download,
   ExternalLink,
@@ -13,10 +11,13 @@ import {
   MoreHorizontal,
   Search,
   Send,
+  SendHorizontal,
+  UsersRound,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Empty,
@@ -30,10 +31,11 @@ import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   fetchCampaignRows,
+  fetchCampaignDetail,
   downloadCampaignResume,
   type CampaignApiRow,
 } from "@/lib/supabase/campaigns";
-import { buttonVariants } from "@/components/ui/button";
+import { resumeApiAuthHeaders } from "@/lib/supabase/userResumes";
 
 type CampaignStatus = "Review ready" | "Sent" | "Draft" | "Paused";
 
@@ -45,20 +47,11 @@ type Campaign = {
   status: CampaignStatus;
   updatedAt: string;
   sentAt: string | null;
+  recipientCount: number;
   resumeAttached: boolean;
-  initial: string;
-  accent: "blue" | "green" | "amber" | "violet" | "cyan";
 };
 
-const ACCENT_ROTATION = ["blue", "green", "amber", "violet", "cyan"] as const;
-
-function accentFromId(id: string): Campaign["accent"] {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-  return ACCENT_ROTATION[Math.abs(h) % ACCENT_ROTATION.length] as Campaign["accent"];
-}
-
-function formatSentAt(value: string): string {
+function formatSentAt(value: string) {
   const date = new Date(value);
   const today = new Date();
   const sameDay = date.toDateString() === today.toDateString();
@@ -91,18 +84,16 @@ function mapApiCampaign(row: CampaignApiRow): Campaign {
     status,
     updatedAt: ts,
     sentAt: row.sent_at,
+    recipientCount: row.recipient_count ?? 0,
     resumeAttached: row.resume_attached,
-    initial: (title.slice(0, 1) || "?").toUpperCase(),
-    accent: accentFromId(row.id),
   };
 }
-
-const pageSize = 6;
 
 export function CampaignsView() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -129,11 +120,10 @@ export function CampaignsView() {
       cancelled = true;
     };
   }, []);
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
+
   const hasCampaigns = campaigns.length > 0;
 
-  const filteredCampaigns = useMemo(() => {
+  const visibleCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const nextCampaigns = campaigns.filter((campaign) => {
       if (normalizedQuery.length === 0) return true;
@@ -141,47 +131,26 @@ export function CampaignsView() {
         .toLowerCase()
         .includes(normalizedQuery);
     });
-
     return nextCampaigns.sort(
       (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
     );
   }, [campaigns, query]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredCampaigns.length / pageSize));
-  const safePage = Math.min(page, pageCount);
-  const visibleCampaigns = filteredCampaigns.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize
-  );
-  const visibleStart =
-    filteredCampaigns.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
-  const visibleEnd = Math.min(safePage * pageSize, filteredCampaigns.length);
-
-  function resetPage(next: () => void) {
-    next();
-    setPage(1);
-  }
-
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background pb-10">
       <div className="mx-auto flex w-full max-w-[82rem] flex-col gap-6 px-5 py-6 sm:px-8 lg:px-10 lg:py-8">
         <div className="min-w-0">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Campaigns
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Manage your outreach campaigns and track their progress.
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Campaigns
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Sent outreach batches and their recipient lists.
+          </p>
+          {listError ? (
+            <p className="mt-2 text-sm text-destructive" role="alert">
+              {listError}
             </p>
-            {listError ? (
-              <p
-                className="mt-3 text-sm text-destructive"
-                role="alert"
-              >
-                {listError}
-              </p>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
         <section>
@@ -193,124 +162,34 @@ export function CampaignsView() {
             />
             <Input
               value={query}
-              onChange={(event) =>
-                resetPage(() => setQuery(event.target.value))
-              }
-              placeholder="Search campaigns..."
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search campaigns…"
               className="h-10 rounded-xl bg-card pl-10 text-sm"
             />
           </label>
         </section>
 
-        <Card className="rounded-2xl bg-card py-0 shadow-sm">
-          <CardContent className="px-0">
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed border-collapse text-left text-sm">
-                <colgroup>
-                  <col className="w-[30%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[17%]" />
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-border text-xs font-semibold text-foreground">
-                    <th className="px-4 py-3 sm:px-5">Campaign</th>
-                    <th className="px-4 py-3">Company</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Date sent</th>
-                    <th className="px-4 py-3">Attachment</th>
-                    <th className="px-4 py-3 text-right sm:px-5">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {listLoading ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-14 text-center text-sm text-muted-foreground sm:px-5"
-                      >
-                        <Loader2
-                          aria-hidden="true"
-                          className="mx-auto size-6 animate-spin"
-                        />
-                        <span className="mt-2 block">Loading campaigns…</span>
-                      </td>
-                    </tr>
-                  ) : visibleCampaigns.length > 0 ? (
-                    visibleCampaigns.map((campaign) => (
-                      <CampaignRow key={campaign.id} campaign={campaign} />
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-10 sm:px-5">
-                        <CampaignsEmptyState hasCampaigns={hasCampaigns} />
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-5">
-              <p>
-                {filteredCampaigns.length === 0
-                  ? hasCampaigns
-                    ? "No campaigns match your search"
-                    : "No campaigns yet"
-                  : `Showing ${visibleStart} to ${visibleEnd} of ${filteredCampaigns.length} campaigns`}
-              </p>
-              {filteredCampaigns.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Previous page"
-                    disabled={safePage === 1}
-                    onClick={() => setPage((current) => Math.max(1, current - 1))}
-                    className="rounded-xl"
-                  >
-                    <ArrowLeft aria-hidden="true" />
-                  </Button>
-                  {Array.from({ length: pageCount }).map((_, index) => {
-                    const nextPage = index + 1;
-                    return (
-                      <Button
-                        key={nextPage}
-                        type="button"
-                        variant={safePage === nextPage ? "secondary" : "ghost"}
-                        size="icon-sm"
-                        aria-label={`Page ${nextPage}`}
-                        onClick={() => setPage(nextPage)}
-                        className={cn(
-                          "rounded-xl",
-                          safePage === nextPage && "text-primary"
-                        )}
-                      >
-                        {nextPage}
-                      </Button>
-                    );
-                  })}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Next page"
-                    disabled={safePage === pageCount}
-                    onClick={() =>
-                      setPage((current) => Math.min(pageCount, current + 1))
-                    }
-                    className="rounded-xl"
-                  >
-                    <ArrowRight aria-hidden="true" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        {listLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 aria-hidden className="size-4 animate-spin" />
+            Loading campaigns…
+          </div>
+        ) : visibleCampaigns.length > 0 ? (
+          <section
+            aria-label="Campaigns"
+            className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
+          >
+            {visibleCampaigns.map((campaign) => (
+              <CampaignCard key={campaign.id} campaign={campaign} />
+            ))}
+          </section>
+        ) : (
+          <Card className="rounded-2xl bg-card shadow-sm">
+            <CardContent className="p-5">
+              <CampaignsEmptyState hasCampaigns={hasCampaigns} />
+            </CardContent>
+          </Card>
+        )}
       </div>
     </main>
   );
@@ -318,7 +197,7 @@ export function CampaignsView() {
 
 function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
   return (
-    <Empty className="min-h-56 border border-dashed border-border bg-muted/40">
+    <Empty className="min-h-56 border border-dashed border-border bg-muted/40 sm:min-h-[18rem]">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Send aria-hidden="true" />
@@ -329,127 +208,329 @@ function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
         <EmptyDescription>
           {hasCampaigns
             ? "Try different keywords in your search."
-            : "Create a campaign when you are ready to start tracking outreach."}
+            : "Send a campaign to see each outreach batch here."}
         </EmptyDescription>
       </EmptyHeader>
     </Empty>
   );
 }
 
-function CampaignRow({ campaign }: { campaign: Campaign }) {
-  const actionLabel = campaign.status === "Draft" ? "Edit" : "Open";
+function CampaignCard({ campaign }: { campaign: Campaign }) {
   const href = `/dashboard/new?campaign=${encodeURIComponent(campaign.id)}`;
+  const actionLabel = campaign.status === "Draft" ? "Edit" : "Open";
+  const { url: resumePreviewUrl, loading: resumePreviewLoading } =
+    useCampaignResumePreviewUrl(campaign.id, campaign.resumeAttached);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [viewingRecipients, setViewingRecipients] = useState<Campaign | null>(
+    null
+  );
+  const displayDate = campaign.sentAt
+    ? `Sent ${formatSentAt(campaign.sentAt)}`
+    : `Updated ${formatSentAt(campaign.updatedAt)}`;
+  const bodyPreview =
+    campaign.description !== "—" ? campaign.description.trim() : "";
 
   async function handleDownloadResume() {
     if (!campaign.resumeAttached || downloading) return;
     setDownloading(true);
     setDownloadError(null);
-    const safeCompany = campaign.company.trim().replace(/[/\\]/g, "-") || "resume";
+    const safeCompany =
+      campaign.company.trim().replace(/[/\\]/g, "-") || "resume";
     const { error } = await downloadCampaignResume(
       campaign.id,
       `${safeCompany}-resume.pdf`
     );
     setDownloading(false);
-    if (error) {
-      setDownloadError(error.message);
-    }
+    if (error) setDownloadError(error.message);
   }
 
   return (
-    <tr className="border-b border-border last:border-b-0">
-      <td className="px-4 py-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
-              campaign.accent === "blue" && "bg-primary/10 text-primary",
-              campaign.accent === "green" &&
-                "bg-[hsl(var(--chart-2)/0.12)] text-[hsl(var(--chart-2))]",
-              campaign.accent === "amber" &&
-                "bg-[hsl(var(--chart-3)/0.12)] text-[hsl(var(--chart-3))]",
-              campaign.accent === "violet" &&
-                "bg-[hsl(var(--chart-4)/0.10)] text-[hsl(var(--chart-4))]",
-              campaign.accent === "cyan" &&
-                "bg-[hsl(var(--chart-1)/0.10)] text-[hsl(var(--chart-1))]"
-            )}
-          >
-            {campaign.initial}
-          </span>
-          <div className="min-w-0">
-            <p className="max-w-[24rem] truncate font-medium text-foreground">
+    <>
+    <Card className="flex h-full flex-col gap-0 rounded-2xl bg-card py-0 shadow-sm">
+      <CardContent className="flex min-h-56 flex-1 flex-col gap-3 p-5">
+        <div className="flex shrink-0 items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
               {campaign.title}
+            </h2>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {campaign.company}
             </p>
-            <p className="mt-1 max-w-[24rem] truncate text-muted-foreground">
-              {campaign.description}
-            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <StatusBadge status={campaign.status} />
+            <CampaignCardActionsMenu
+              title={campaign.title}
+              href={href}
+              resumeAttached={campaign.resumeAttached}
+              downloading={downloading}
+              onDownloadResume={() => void handleDownloadResume()}
+            />
           </div>
         </div>
-      </td>
-      <td className="px-4 py-3 text-muted-foreground">{campaign.company}</td>
-      <td className="px-4 py-3">
-        <StatusBadge status={campaign.status} />
-      </td>
-      <td className="px-4 py-3 text-muted-foreground">
-        {campaign.sentAt ? formatSentAt(campaign.sentAt) : "—"}
-      </td>
-      <td className="px-4 py-3">
+
+        {bodyPreview && campaign.resumeAttached ? (
+          <p className="line-clamp-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+            {bodyPreview}
+          </p>
+        ) : null}
+
         {campaign.resumeAttached ? (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <FileText aria-hidden="true" className="size-3.5 shrink-0" />
-              <span className="text-sm">Resume</span>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={downloading}
-              className="h-7 rounded-lg px-2.5 text-xs"
-              onClick={() => void handleDownloadResume()}
-            >
-              {downloading ? (
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
-              ) : (
-                <Download className="size-3.5" aria-hidden />
-              )}
-              Download
-            </Button>
-            {downloadError ? (
-              <p className="text-xs text-destructive" role="alert">
-                {downloadError}
-              </p>
-            ) : null}
+          <div className="relative min-h-40 flex-1 overflow-hidden rounded-xl border border-border bg-muted/30">
+            {resumePreviewLoading ? (
+              <span className="flex size-full min-h-40 items-center justify-center">
+                <Loader2
+                  aria-hidden
+                  className="size-5 animate-spin text-muted-foreground"
+                />
+              </span>
+            ) : resumePreviewUrl ? (
+              <iframe
+                src={`${resumePreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0`}
+                title={`Resume attached to ${campaign.title}`}
+                className="pointer-events-none absolute inset-x-0 top-0 h-[240%] w-full border-0 bg-card"
+              />
+            ) : (
+              <span className="flex size-full min-h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
+                <FileText aria-hidden className="size-4" />
+                Resume attached
+              </span>
+            )}
           </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-      <td className="px-4 py-3 sm:px-5">
-        <div className="flex justify-end gap-2">
+        ) : null}
+
+        {bodyPreview && !campaign.resumeAttached ? (
+          <p className="line-clamp-4 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+            {bodyPreview}
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          disabled={campaign.recipientCount === 0}
+          onClick={() => setViewingRecipients(campaign)}
+          className="inline-flex w-fit items-center gap-1 rounded-lg border border-border bg-muted/40 px-2 py-1 text-xs text-foreground transition-colors hover:bg-accent disabled:cursor-default disabled:opacity-60 disabled:hover:bg-muted/40"
+        >
+          <UsersRound aria-hidden className="size-3.5 shrink-0" />
+          {campaign.recipientCount}{" "}
+          {campaign.recipientCount === 1 ? "recipient" : "recipients"}
+        </button>
+
+        {downloadError ? (
+          <p className="text-xs text-destructive" role="alert">
+            {downloadError}
+          </p>
+        ) : null}
+
+        <div className="flex shrink-0 items-center justify-between gap-3 pt-1">
+          <p className="text-xs text-muted-foreground">{displayDate}</p>
           <Link
             href={href}
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
-              "min-h-8 rounded-xl px-3 text-primary"
+              "min-h-8 gap-1.5 rounded-xl px-3 text-xs text-primary"
             )}
           >
+            <SendHorizontal className="size-3.5" aria-hidden />
             {actionLabel}
           </Link>
-          <CampaignRowActionsMenu title={campaign.title} href={href} />
         </div>
-      </td>
-    </tr>
+      </CardContent>
+    </Card>
+    {viewingRecipients ? (
+      <CampaignRecipientsDialog
+        campaign={viewingRecipients}
+        onClose={() => setViewingRecipients(null)}
+      />
+    ) : null}
+    </>
   );
 }
 
-function CampaignRowActionsMenu({
+function useCampaignResumePreviewUrl(campaignId: string, enabled: boolean) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(enabled);
+  const ownedUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setUrl(null);
+      setLoading(false);
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `/api/campaigns/${encodeURIComponent(campaignId)}/resume`,
+          { headers: await resumeApiAuthHeaders() }
+        );
+        if (!res.ok) throw new Error("Could not load resume preview");
+        const blob = await res.blob();
+        if (cancelled) return;
+        const nextUrl = URL.createObjectURL(blob);
+        ownedUrlRef.current = nextUrl;
+        setUrl(nextUrl);
+      } catch {
+        if (!cancelled) setUrl(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+      if (ownedUrlRef.current) {
+        URL.revokeObjectURL(ownedUrlRef.current);
+        ownedUrlRef.current = null;
+      }
+    };
+  }, [campaignId, enabled]);
+
+  return { url, loading };
+}
+
+function CampaignRecipientsDialog({
+  campaign,
+  onClose,
+}: {
+  campaign: Campaign;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [recipients, setRecipients] = useState<
+    Array<{ email: string; greeting_name: string }>
+  >([]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      const { data, error: fetchError } = await fetchCampaignDetail(campaign.id);
+      if (cancelled) return;
+      if (fetchError || !data) {
+        setError(fetchError?.message ?? "Could not load recipients.");
+        setRecipients([]);
+      } else {
+        setRecipients(data.recipients ?? []);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaign.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close recipients"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="campaign-recipients-title"
+        className="relative z-10 flex max-h-[min(32rem,calc(100vh-1.5rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="campaign-recipients-title"
+              className="truncate text-base font-semibold text-foreground"
+            >
+              Recipients
+            </h2>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {campaign.company} · {campaign.title}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Loading recipients…
+            </div>
+          ) : error ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : recipients.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No recipients recorded for this campaign.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {recipients.map((recipient, index) => (
+                <li
+                  key={`${recipient.email}-${index}`}
+                  className="rounded-xl border border-border bg-muted/25 px-3 py-2.5"
+                >
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {recipient.greeting_name?.trim() || "Recruiter"}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {recipient.email}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignCardActionsMenu({
   title,
   href,
+  resumeAttached = false,
+  downloading = false,
+  onDownloadResume,
 }: {
   title: string;
   href: string;
+  resumeAttached?: boolean;
+  downloading?: boolean;
+  onDownloadResume?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -460,11 +541,11 @@ function CampaignRowActionsMenu({
   }, [copied]);
 
   return (
-    <details className="relative z-10">
+    <details className="relative">
       <summary
         className={cn(
           buttonVariants({ variant: "ghost", size: "icon-sm" }),
-          "cursor-pointer list-none rounded-xl text-muted-foreground [&::-webkit-details-marker]:hidden"
+          "cursor-pointer list-none rounded-lg text-muted-foreground [&::-webkit-details-marker]:hidden"
         )}
         aria-label={`More actions for ${title}`}
       >
@@ -472,7 +553,7 @@ function CampaignRowActionsMenu({
       </summary>
       <div
         role="menu"
-        className="absolute right-0 top-full mt-1 min-w-[12rem] rounded-xl border border-border bg-popover py-1 shadow-md"
+        className="absolute right-0 top-full z-10 mt-1 min-w-[12rem] rounded-xl border border-border bg-popover py-1 shadow-md"
       >
         <Link
           href={href}
@@ -482,6 +563,22 @@ function CampaignRowActionsMenu({
           <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
           Open campaign
         </Link>
+        {resumeAttached && onDownloadResume ? (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={downloading}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-accent disabled:opacity-60"
+            onClick={onDownloadResume}
+          >
+            {downloading ? (
+              <Loader2 aria-hidden className="size-4 shrink-0 animate-spin" />
+            ) : (
+              <Download aria-hidden="true" className="size-4 shrink-0" />
+            )}
+            Download resume
+          </button>
+        ) : null}
         <button
           type="button"
           role="menuitem"
@@ -509,13 +606,12 @@ function StatusBadge({ status }: { status: CampaignStatus }) {
     <Badge
       variant="secondary"
       className={cn(
-        "rounded-lg px-2.5 font-semibold",
+        "shrink-0 rounded-lg px-2 py-0.5 text-[0.65rem] font-semibold",
         status === "Review ready" &&
           "bg-[hsl(var(--chart-3)/0.12)] text-[hsl(var(--chart-3))]",
         status === "Sent" &&
           "bg-[hsl(var(--chart-2)/0.12)] text-[hsl(var(--chart-2))]",
-        status === "Draft" &&
-          "bg-secondary text-muted-foreground",
+        status === "Draft" && "bg-secondary text-muted-foreground",
         status === "Paused" &&
           "bg-[hsl(var(--chart-3)/0.08)] text-[hsl(var(--chart-3))]"
       )}

@@ -39,7 +39,7 @@ from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
 from campaign_api import persist_sent_campaign, router as campaign_router
 from billing_api import router as billing_router
 from email_template_api import router as email_template_router
-from user_resume_api import router as user_resume_router
+from user_resume_api import router as user_resume_router, storage_upload_object
 
 _app_init_done = False
 logger = logging.getLogger(__name__)
@@ -101,6 +101,43 @@ async def db_sqlalchemy_error_handler(_request: Request, exc: SQLAlchemyError):
 
 def _parse_bool(v: str) -> bool:
     return str(v).lower() in ("true", "1", "on", "yes")
+
+
+def _supabase_access_token_from_request(request: Request) -> str | None:
+    auth = request.headers.get("authorization") or request.headers.get(
+        "Authorization", ""
+    )
+    if auth.startswith("Bearer "):
+        token = auth.removeprefix("Bearer ").strip()
+        return token or None
+    return None
+
+
+def _resolve_campaign_resume_path(
+    request: Request,
+    owner_id: uuid.UUID | None,
+    resume_storage_path: str | None,
+    resume_bytes: bytes | None,
+) -> str | None:
+    path_clean = (resume_storage_path or "").strip() or None
+    if path_clean:
+        return path_clean
+    if owner_id is None or not resume_bytes:
+        return None
+
+    token = _supabase_access_token_from_request(request)
+    if not token:
+        return None
+
+    object_path = f"{owner_id}/campaigns/{uuid.uuid4()}.pdf"
+    try:
+        storage_upload_object(token, object_path, resume_bytes)
+        return object_path
+    except Exception:
+        logger.exception(
+            "Failed to store campaign resume snapshot for owner %s", owner_id
+        )
+        return None
 
 
 def _supabase_user_from_request(request: Request) -> dict | None:
@@ -340,7 +377,12 @@ def _send_campaign(
         owner_id = _owner_id_for_send(request, row)
         subj_final = subject if subject is not None else ""
         body_final = body_opt if body_opt is not None else ""
-        path_clean = (resume_storage_path or "").strip() or None
+        path_clean = _resolve_campaign_resume_path(
+            request,
+            owner_id,
+            resume_storage_path,
+            resume_bytes,
+        )
 
         thread = threading.Thread(
             target=_send_campaign_in_background,

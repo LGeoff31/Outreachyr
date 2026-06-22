@@ -156,7 +156,7 @@ export function SendFeedbackButton({
                 Send feedback
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Share a bug, idea, or anything else.
+                Share a bug, idea, or anything else. We read each one.
               </p>
             </div>
             <div className="space-y-3 px-5 py-4">

@@ -233,13 +233,45 @@ export function OutreachForm() {
       const nextFile = new File([blob], safeName, { type: "application/pdf" });
       setFile(nextFile);
       setSelectedSavedResumeId(row.id);
+      return true;
     } catch {
       setFile(null);
       setSelectedSavedResumeId(null);
+      return false;
     } finally {
       setLibraryAttachLoading(false);
     }
   }, []);
+
+  const applyCampaignResume = useCallback(
+    async (campaignId: string, suggestedFilename: string) => {
+      setLibraryAttachLoading(true);
+      try {
+        const res = await fetch(
+          `/api/campaigns/${encodeURIComponent(campaignId)}/resume`,
+          { headers: await resumeApiAuthHeaders() }
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+        const blob = await res.blob();
+        const safeName = suggestedFilename.endsWith(".pdf")
+          ? suggestedFilename
+          : `${suggestedFilename}.pdf`;
+        setFile(new File([blob], safeName, { type: "application/pdf" }));
+        setSelectedSavedResumeId(null);
+        return true;
+      } catch {
+        setFile(null);
+        setSelectedSavedResumeId(null);
+        return false;
+      } finally {
+        setLibraryAttachLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -342,21 +374,45 @@ export function OutreachForm() {
   }, [campaignFromUrl]);
 
   useEffect(() => {
-    if (!pendingCampaignResumePath || savedResumesLoading) return;
-    const row = savedResumes.find(
-      (r) => r.resume_storage_path === pendingCampaignResumePath
-    );
-    if (row) {
-      void applyLibraryResume(row);
-      setPendingCampaignResumePath(null);
-    } else if (savedResumes.length > 0) {
-      setPendingCampaignResumePath(null);
+    if (
+      !pendingCampaignResumePath ||
+      savedResumesLoading ||
+      !campaignFromUrl
+    ) {
+      return;
     }
+
+    let cancelled = false;
+
+    (async () => {
+      const safeCompany =
+        (loadedCampaign?.company || "resume").trim().replace(/[/\\]/g, "-") ||
+        "resume";
+      const row = savedResumes.find(
+        (r) => r.resume_storage_path === pendingCampaignResumePath
+      );
+      if (row) {
+        const attached = await applyLibraryResume(row);
+        if (!cancelled && !attached) {
+          await applyCampaignResume(campaignFromUrl, `${safeCompany}-resume.pdf`);
+        }
+      } else {
+        await applyCampaignResume(campaignFromUrl, `${safeCompany}-resume.pdf`);
+      }
+      if (!cancelled) setPendingCampaignResumePath(null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     pendingCampaignResumePath,
     savedResumes,
     savedResumesLoading,
+    campaignFromUrl,
+    loadedCampaign?.company,
     applyLibraryResume,
+    applyCampaignResume,
   ]);
 
   useEffect(() => {
@@ -528,7 +584,12 @@ export function OutreachForm() {
       if (file) fd.append("resume", file, file.name);
       const libraryRow = selectedSavedResumeId
         ? savedResumes.find((r) => r.id === selectedSavedResumeId)
-        : undefined;
+        : file
+          ? savedResumes.find((r) => {
+              const safeName = `${r.display_name.replace(/[/\\]/g, "-")}.pdf`;
+              return file.name === safeName;
+            })
+          : undefined;
       if (libraryRow?.resume_storage_path) {
         fd.append("resume_storage_path", libraryRow.resume_storage_path);
       }

@@ -206,9 +206,9 @@ export function TemplatesView() {
               Templates
             </h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Save subject lines and message bodies with merge tokens like{" "}
-              <span className="font-mono text-xs">{"{{first_name}}"}</span>.
-              Use them from the New campaign page.
+              Save subject lines and message bodies for reuse. Use the {" "}
+              <span className="font-mono text-xs">{"{{first_name}}"}</span> and {" "}
+              <span className="font-mono text-xs">{"{{company}}"}</span> interpolated values in your messages for personalization.
             </p>
           </div>
           <Button

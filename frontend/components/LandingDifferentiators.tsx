@@ -11,14 +11,14 @@ const points = [
   {
     title: "100% verified recruiter emails",
     description:
-      "We source from a database of real recruiter emails, not guessed addresses or stale lists.",
+      "We source from a database of real recruiter emails, not stale lists. We'll provide their linkedin as proof.",
     icon: MailCheck,
     contrast: false,
   },
   {
     title: "Personalized emails that convert",
     description:
-      "Merge fields and templates help you write outreach that sounds like you at scale, with higher reply rates.",
+      "We'll parse your resume to generate emails that align with what a specific company is looking for.",
     icon: PenLine,
     contrast: false,
   },
