@@ -3,13 +3,14 @@ import json
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import urlopen
 from config import load_dotenv, serpapi_api_key
 from utils import _letters, _first_from_email, domain_for_company
 
 PLACEHOLDER = "__FIRST_NAME__"
 TO = []  # (optional) insert specific recruiter emails here
+RecruiterCandidate = dict[str, str]
 
 
 def apply_merge_fields(
@@ -29,14 +30,35 @@ def apply_merge_fields(
     return out
 
 
-def _ingest_search_items(items: list[dict], domain: str) -> list[tuple[str, str]]:
+def _validated_linkedin_profile_url(raw_url: str) -> str | None:
+    url = raw_url.strip()
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host != "linkedin.com" and not host.endswith(".linkedin.com"):
+        return None
+    if not parsed.path.lower().startswith("/in/"):
+        return None
+    return url
+
+
+def _ingest_search_items(items: list[dict], domain: str) -> list[RecruiterCandidate]:
     out, seen = [], set()
     for it in items:
         title = (it.get("title") or "").replace("–", "-")
         snippet = it.get("snippet") or it.get("description") or ""
-        link = (it.get("link") or it.get("url") or "").lower()
+        raw_link = str(it.get("link") or it.get("url") or "").strip()
+        linkedin_url = _validated_linkedin_profile_url(raw_link)
         text = f"{title} {snippet}".lower()
-        linked_in = "linkedin.com/in" in link or "linkedin" in title.lower()
+        linked_in = linkedin_url is not None or "linkedin" in title.lower()
         if not linked_in or "recruit" not in text:
             continue
         head = title.split("|", 1)[0].strip().split(" - ", 1)[0].strip()
@@ -51,12 +73,18 @@ def _ingest_search_items(items: list[dict], domain: str) -> list[tuple[str, str]
         if addr in seen:
             continue
         seen.add(addr)
-        out.append((addr, first[:1].upper() + first[1:].lower()))
+        candidate = {
+            "email": addr,
+            "greeting_name": first[:1].upper() + first[1:].lower(),
+        }
+        if linkedin_url:
+            candidate["linkedin_url"] = linkedin_url
+        out.append(candidate)
     return out
 
 
-def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]]:
-    combined: list[tuple[str, str]] = []
+def _discover_serpapi(q: str, domain: str, api_key: str) -> list[RecruiterCandidate]:
+    combined: list[RecruiterCandidate] = []
     for start in (0, 10):
         url = "https://serpapi.com/search.json?" + urlencode(
             {
@@ -94,12 +122,14 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[tuple[str, str]
         combined.extend(_ingest_search_items(items, domain))
 
     seen: set[str] = set()
-    deduped: list[tuple[str, str]] = []
-    for e, n in combined:
-        if e in seen:
+    deduped: list[RecruiterCandidate] = []
+    for candidate in combined:
+        email = candidate["email"].strip().lower()
+        if email in seen:
             continue
-        seen.add(e)
-        deduped.append((e, n))
+        seen.add(email)
+        candidate["email"] = email
+        deduped.append(candidate)
     return deduped
 
 
@@ -108,18 +138,18 @@ def test_recipients() -> list[tuple[str, str]]:
     return [("geoffrey.lee@test.com", "Casey"), ("electricochy1@gmail.com", "electricochy"), ("lgeoff31@gmail.com", "geoff"), ("geoffrey.lee@cloudkitchens.com", "geoff")]
 
 
-def discover(
+def discover_candidates(
     company: str,
     *,
     school_name: str | None = None,
     school_normalized: str | None = None,
-) -> list[tuple[str, str]]:
+) -> list[RecruiterCandidate]:
     domain = domain_for_company(company)
     if domain is None:
         return []
     api_key = serpapi_api_key()
     domain = domain.lstrip("@").strip()
-    combined: list[tuple[str, str]] = []
+    combined: list[RecruiterCandidate] = []
     for q in _recruiter_search_queries(
         company,
         school_name=school_name,
@@ -128,14 +158,30 @@ def discover(
         combined.extend(_discover_serpapi(q, domain, api_key))
 
     seen: set[str] = set()
-    deduped: list[tuple[str, str]] = []
-    for email, name in combined:
-        key = email.lower()
+    deduped: list[RecruiterCandidate] = []
+    for candidate in combined:
+        key = candidate["email"].lower()
         if key in seen:
             continue
         seen.add(key)
-        deduped.append((email, name))
+        deduped.append(candidate)
     return deduped
+
+
+def discover(
+    company: str,
+    *,
+    school_name: str | None = None,
+    school_normalized: str | None = None,
+) -> list[tuple[str, str]]:
+    return [
+        (candidate["email"], candidate.get("greeting_name", ""))
+        for candidate in discover_candidates(
+            company,
+            school_name=school_name,
+            school_normalized=school_normalized,
+        )
+    ]
 
 
 def _recruiter_search_queries(

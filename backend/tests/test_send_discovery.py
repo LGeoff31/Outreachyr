@@ -7,6 +7,59 @@ import send
 
 
 class SendDiscoveryTests(unittest.TestCase):
+    def test_ingest_search_items_preserves_linkedin_profile_url(self) -> None:
+        candidates = send._ingest_search_items(
+            [
+                {
+                    "title": "Alice Smith - Campus Recruiter - Nvidia | LinkedIn",
+                    "snippet": "Campus recruiter at Nvidia",
+                    "link": "https://www.linkedin.com/in/alice-smith/",
+                }
+            ],
+            "nvidia.com",
+        )
+
+        self.assertEqual(
+            candidates,
+            [
+                {
+                    "email": "alice.smith@nvidia.com",
+                    "greeting_name": "Alice",
+                    "linkedin_url": "https://www.linkedin.com/in/alice-smith/",
+                }
+            ],
+        )
+
+    def test_discover_keeps_tuple_api_while_candidate_api_has_url(self) -> None:
+        def fake_discover_serpapi(q: str, domain: str, api_key: str):
+            return [
+                {
+                    "email": "alice.smith@nvidia.com",
+                    "greeting_name": "Alice",
+                    "linkedin_url": "https://www.linkedin.com/in/alice-smith/",
+                }
+            ]
+
+        with (
+            patch.object(send, "serpapi_api_key", return_value="test-key"),
+            patch.object(send, "domain_for_company", return_value="nvidia.com"),
+            patch.object(send, "_discover_serpapi", side_effect=fake_discover_serpapi),
+        ):
+            recipients = send.discover("Nvidia")
+            candidates = send.discover_candidates("Nvidia")
+
+        self.assertEqual(recipients, [("alice.smith@nvidia.com", "Alice")])
+        self.assertEqual(
+            candidates,
+            [
+                {
+                    "email": "alice.smith@nvidia.com",
+                    "greeting_name": "Alice",
+                    "linkedin_url": "https://www.linkedin.com/in/alice-smith/",
+                }
+            ],
+        )
+
     def test_discover_prefers_school_specific_recruiter_results(self) -> None:
         queries: list[str] = []
 
@@ -14,15 +67,15 @@ class SendDiscoveryTests(unittest.TestCase):
             queries.append(q)
             if '"University of Waterloo"' in q:
                 return [
-                    ("alice.smith@nvidia.com", "Alice"),
-                    ("shared.recruiter@nvidia.com", "Shared"),
+                    {"email": "alice.smith@nvidia.com", "greeting_name": "Alice"},
+                    {"email": "shared.recruiter@nvidia.com", "greeting_name": "Shared"},
                 ]
             if "campus recruiter" in q:
                 return [
-                    ("shared.recruiter@nvidia.com", "Shared"),
-                    ("bob.jones@nvidia.com", "Bob"),
+                    {"email": "shared.recruiter@nvidia.com", "greeting_name": "Shared"},
+                    {"email": "bob.jones@nvidia.com", "greeting_name": "Bob"},
                 ]
-            return [("carol.ng@nvidia.com", "Carol")]
+            return [{"email": "carol.ng@nvidia.com", "greeting_name": "Carol"}]
 
         with (
             patch.object(send, "serpapi_api_key", return_value="test-key"),

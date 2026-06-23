@@ -269,6 +269,7 @@ def _send_campaign(
     request: Request,
     *,
     people: list[tuple[str, str]],
+    recipient_details: list[dict[str, str]] | None = None,
     company: str,
     dry_run: bool,
     subject: str | None,
@@ -277,7 +278,11 @@ def _send_campaign(
     resume_filename: str,
     resume_storage_path: str | None = None,
 ):
-    recipients = [{"email": e, "greeting_name": n} for e, n in people]
+    recipients = (
+        recipient_details
+        if recipient_details is not None
+        else [{"email": e, "greeting_name": n} for e, n in people]
+    )
 
     if dry_run:
         return {
@@ -438,6 +443,7 @@ def _run_send(
     resume_profile_school_normalized: str | None = None,
 ):
     company = company.strip()
+    recipient_details: list[dict[str, str]] | None = None
     if not dry_run and selected_people is not None:
         if not selected_people:
             return JSONResponse(
@@ -466,11 +472,22 @@ def _run_send(
             )
 
         try:
-            people = outreach.discover(
-                company,
-                school_name=resume_profile_school,
-                school_normalized=resume_profile_school_normalized,
-            )
+            if dry_run:
+                recipient_details = outreach.discover_candidates(
+                    company,
+                    school_name=resume_profile_school,
+                    school_normalized=resume_profile_school_normalized,
+                )
+                people = [
+                    (r["email"], r.get("greeting_name", ""))
+                    for r in recipient_details
+                ]
+            else:
+                people = outreach.discover(
+                    company,
+                    school_name=resume_profile_school,
+                    school_normalized=resume_profile_school_normalized,
+                )
         except RuntimeError as e:
             return JSONResponse(
                 status_code=502,
@@ -500,6 +517,7 @@ def _run_send(
     return _send_campaign(
         request,
         people=people,
+        recipient_details=recipient_details,
         company=company,
         dry_run=dry_run,
         subject=subj,
