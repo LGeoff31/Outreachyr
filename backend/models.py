@@ -323,37 +323,10 @@ class ResumeProfileExperience(Base):
     confidence: Mapped[float | None] = mapped_column(Float)
 
     profile: Mapped[ResumeProfile] = relationship(back_populates="experience")
-    highlights: Mapped[list[ResumeProfileExperienceHighlight]] = relationship(
-        back_populates="experience",
-        cascade="all, delete-orphan",
-        order_by="ResumeProfileExperienceHighlight.position",
-    )
     skills: Mapped[list[ResumeProfileExperienceSkill]] = relationship(
         back_populates="experience",
         cascade="all, delete-orphan",
         order_by="ResumeProfileExperienceSkill.position",
-    )
-
-
-class ResumeProfileExperienceHighlight(Base):
-    __tablename__ = "resume_profile_experience_highlights"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        server_default=text("gen_random_uuid()"),
-    )
-    experience_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("resume_profile_experience.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    position: Mapped[int] = mapped_column(Integer, nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-
-    experience: Mapped[ResumeProfileExperience] = relationship(
-        back_populates="highlights"
     )
 
 

@@ -758,7 +758,6 @@ type ExperienceDraft = {
   endDate: string;
   isCurrent: boolean;
   description: string;
-  highlights: string;
   skills: string;
 };
 
@@ -1373,11 +1372,6 @@ function ExperienceEditor({
                 value={item.description}
                 onChange={(value) => onChange(index, { description: value })}
               />
-              <TextareaField
-                label="Highlights"
-                value={item.highlights}
-                onChange={(value) => onChange(index, { highlights: value })}
-              />
               <TextField
                 label="Skills"
                 value={item.skills}
@@ -1606,7 +1600,6 @@ function normalizeExperienceDrafts(values: unknown[]) {
     endDate: textFromRecord(record, "end_date"),
     isCurrent: boolFromRecord(record, "is_current"),
     description: textFromRecord(record, "description"),
-    highlights: textFromRecord(record, "highlights"),
     skills:
       textFromRecord(record, "skills") ||
       textFromRecord(record, "technologies"),
@@ -1651,7 +1644,6 @@ function emptyExperienceDraft(): ExperienceDraft {
     endDate: "",
     isCurrent: false,
     description: "",
-    highlights: "",
     skills: "",
   };
 }
@@ -1687,7 +1679,6 @@ function experienceDraftToRecord(item: ExperienceDraft) {
   assignCleanText(record, "start_date", item.startDate);
   assignCleanText(record, "end_date", item.endDate);
   assignCleanText(record, "description", item.description);
-  assignCleanList(record, "highlights", parseLineList(item.highlights));
   assignCleanList(record, "skills", parseDelimitedList(item.skills));
   if (hasRecordValues(record)) record.is_current = item.isCurrent;
   return record;

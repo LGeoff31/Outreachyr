@@ -150,7 +150,6 @@ class UserResumeApiProfileTests(unittest.TestCase):
                     "end_date": "2025-08",
                     "is_current": False,
                     "description": "Built ingestion pipelines.",
-                    "highlights": ["Built ingestion pipelines."],
                     "skills": ["Python", "SQL"],
                     "confidence": 0.9,
                 }
@@ -217,7 +216,12 @@ class UserResumeApiProfileTests(unittest.TestCase):
             grad_year=2027,
             skills=[" Python ", "", "TypeScript", "python"],
             education=[{"school": "University of Waterloo"}],
-            experience=[{"title": "Software Engineer Intern"}],
+            experience=[
+                {
+                    "title": "Software Engineer Intern",
+                    "highlights": ["Old duplicate highlight"],
+                }
+            ],
             projects=[{"name": "Distributed Job Queue"}],
             links=[" https://github.com/geoff ", ""],
         )
@@ -242,6 +246,7 @@ class UserResumeApiProfileTests(unittest.TestCase):
             [row.title for row in profile.experience],
             ["Software Engineer Intern"],
         )
+        self.assertFalse(hasattr(profile.experience[0], "highlights"))
         self.assertEqual(
             [row.name for row in profile.projects],
             ["Distributed Job Queue"],

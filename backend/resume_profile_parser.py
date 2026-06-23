@@ -145,10 +145,6 @@ class AiExperienceItem(_StrictResumeModel):
         default=None,
         description="Concise description of the role.",
     )
-    highlights: list[str] = Field(
-        default_factory=list,
-        description="Bullet-level achievements.",
-    )
     skills: list[str] = Field(
         default_factory=list,
         description=(

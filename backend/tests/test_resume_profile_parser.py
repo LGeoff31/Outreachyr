@@ -140,7 +140,7 @@ class ResumeProfileParserTests(unittest.TestCase):
 
         self.assertEqual(profile.education[0].school, "University of Waterloo")
         self.assertEqual(profile.experience[0].company, "Super.com")
-        self.assertEqual(profile.experience[0].highlights, [])
+        self.assertFalse(hasattr(profile.experience[0], "highlights"))
         self.assertEqual(profile.projects[0].skills, [])
 
     def test_ai_schema_maps_legacy_technologies_to_skills(self) -> None:
@@ -284,7 +284,6 @@ class ResumeProfileParserTests(unittest.TestCase):
                     end_date="2025-08",
                     is_current=False,
                     description="Built ingestion pipelines.",
-                    highlights=["Built ingestion pipelines."],
                     skills=["Python", "SQL"],
                     confidence=0.9,
                 )
@@ -329,6 +328,7 @@ class ResumeProfileParserTests(unittest.TestCase):
         self.assertEqual(profile.skills, ["Python", "React"])
         self.assertEqual(profile.experience[0]["company"], "Snowflake")
         self.assertEqual(profile.experience[0]["skills"], ["Python", "SQL"])
+        self.assertNotIn("highlights", profile.experience[0])
         self.assertNotIn("technologies", profile.experience[0])
         self.assertEqual(profile.projects[0]["skills"], ["Redis", "Docker"])
         self.assertNotIn("technologies", profile.projects[0])
