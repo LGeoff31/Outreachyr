@@ -349,14 +349,9 @@ export function OutreachForm() {
         }))
       );
       setTestMode(false);
-      const sent = data.status.toLowerCase() === "sent";
       setLoadedCampaign(data);
       setErr(false);
-      setMessage(
-        sent
-          ? "This campaign was already sent."
-          : "Campaign loaded."
-      );
+      setMessage("Campaign loaded.");
       const path = data.resume_storage_path?.trim();
       if (path) {
         setPendingCampaignResumePath(path);
@@ -455,8 +450,6 @@ export function OutreachForm() {
 
   const companyReady =
     testMode || company.trim().length > 0;
-  const campaignActionsLocked =
-    loadedCampaign?.status?.toLowerCase() === "sent";
   const billingBlocked =
     !testMode &&
     billingStatus?.billing_enabled === true &&
@@ -464,22 +457,19 @@ export function OutreachForm() {
   const canSend =
     recipients.length > 0 &&
     loading === null &&
-    !campaignActionsLocked &&
     !billingBlocked;
   const sendBlockedReason =
     canSend || loading === "send"
       ? undefined
       : billingBlocked
         ? "Pay $5 once to unlock more campaigns."
-        : campaignActionsLocked
-          ? "This campaign was already sent."
-          : loading === "preview"
-            ? "Wait for recruiter search to finish."
-            : recipients.length === 0
-              ? testMode
-                ? "Enter a valid test email address."
-                : "Fetch recruiters first."
-              : undefined;
+        : loading === "preview"
+          ? "Wait for recruiter search to finish."
+          : recipients.length === 0
+            ? testMode
+              ? "Enter a valid test email address."
+              : "Fetch recruiters first."
+            : undefined;
   const companyInvalid = err && !companyReady;
 
   const resetFormFields = useCallback(() => {
@@ -541,14 +531,6 @@ export function OutreachForm() {
       if (!companyReady) {
         setErr(true);
         setMessage("Enter a company name before running the dry run.");
-        return;
-      }
-
-      if (dryRun && campaignActionsLocked) {
-        setErr(false);
-        setMessage(
-          "This campaign was already sent. Open a new campaign to run another dry run."
-        );
         return;
       }
 
@@ -716,7 +698,6 @@ export function OutreachForm() {
     [
       bodyText,
       billingStatus,
-      campaignActionsLocked,
       company,
       companyReady,
       file,
@@ -740,12 +721,13 @@ export function OutreachForm() {
       <div className="mx-auto w-full max-w-[90rem] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {campaignFromUrl
-              ? loadedCampaign?.status?.toLowerCase() === "sent"
-                ? "Campaign (sent)"
-                : "Campaign"
-              : "New campaign"}
+            New campaign
           </h1>
+          {campaignFromUrl && loadedCampaign && !campaignLoading ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Prefilled from a previous campaign.
+            </p>
+          ) : null}
           {campaignLoading ? (
             <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2
@@ -772,7 +754,7 @@ export function OutreachForm() {
                 href="/dashboard/new"
                 className="font-medium text-primary underline-offset-4 hover:underline"
               >
-                Start a new campaign
+                Clear and start blank
               </Link>
             </p>
           ) : null}
@@ -938,7 +920,6 @@ export function OutreachForm() {
             errorDetails={errorDetails}
             sendSuccess={sendSuccess}
             sendQueued={sendQueued}
-            actionsLocked={campaignActionsLocked}
           />
         </div>
       </div>

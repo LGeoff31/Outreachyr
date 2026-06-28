@@ -164,7 +164,7 @@ export function DashboardShell({
             </Link>
             <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground">
               <UserRound aria-hidden="true" className="size-4 shrink-0" />
-              <span className="truncate">{active}</span>
+              <span className="truncate">{mobileNavLabel(pathname)}</span>
             </div>
           </div>
 
@@ -175,7 +175,7 @@ export function DashboardShell({
   );
 }
 
-function activeFromPathname(pathname: string): DashboardSection {
+function activeFromPathname(pathname: string): DashboardSection | null {
   if (
     pathname === "/dashboard/templates" ||
     pathname.startsWith("/dashboard/templates/")
@@ -188,7 +188,22 @@ function activeFromPathname(pathname: string): DashboardSection {
   ) {
     return "Resumes";
   }
-  return "Campaigns";
+  if (pathname === "/dashboard") {
+    return "Campaigns";
+  }
+  return null;
+}
+
+function mobileNavLabel(pathname: string): string {
+  const active = activeFromPathname(pathname);
+  if (active) return active;
+  if (
+    pathname === "/dashboard/new" ||
+    pathname.startsWith("/dashboard/new/")
+  ) {
+    return "New campaign";
+  }
+  return "Dashboard";
 }
 
 function DashboardAccountSummary() {

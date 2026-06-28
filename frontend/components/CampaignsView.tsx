@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Eye,
   FileText,
   Loader2,
   MoreHorizontal,
@@ -34,6 +35,7 @@ import {
   fetchCampaignDetail,
   downloadCampaignResume,
   type CampaignApiRow,
+  type CampaignDetailResponse,
 } from "@/lib/supabase/campaigns";
 import { resumeApiAuthHeaders } from "@/lib/supabase/userResumes";
 
@@ -217,7 +219,6 @@ function CampaignsEmptyState({ hasCampaigns }: { hasCampaigns: boolean }) {
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
   const href = `/dashboard/new?campaign=${encodeURIComponent(campaign.id)}`;
-  const actionLabel = campaign.status === "Draft" ? "Edit" : "Open";
   const { url: resumePreviewUrl, loading: resumePreviewLoading } =
     useCampaignResumePreviewUrl(campaign.id, campaign.resumeAttached);
   const [downloading, setDownloading] = useState(false);
@@ -225,6 +226,8 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
   const [viewingRecipients, setViewingRecipients] = useState<Campaign | null>(
     null
   );
+  const [previewingCampaign, setPreviewingCampaign] =
+    useState<Campaign | null>(null);
   const displayDate = campaign.sentAt
     ? `Sent ${formatSentAt(campaign.sentAt)}`
     : `Updated ${formatSentAt(campaign.updatedAt)}`;
@@ -325,16 +328,28 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
         <div className="flex shrink-0 items-center justify-between gap-3 pt-1">
           <p className="text-xs text-muted-foreground">{displayDate}</p>
-          <Link
-            href={href}
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "min-h-8 gap-1.5 rounded-xl px-3 text-xs text-primary"
-            )}
-          >
-            <SendHorizontal className="size-3.5" aria-hidden />
-            {actionLabel}
-          </Link>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-8 gap-1.5 rounded-xl px-3 text-xs"
+              onClick={() => setPreviewingCampaign(campaign)}
+            >
+              <Eye className="size-3.5" aria-hidden />
+              Preview
+            </Button>
+            <Link
+              href={href}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "min-h-8 gap-1.5 rounded-xl px-3 text-xs text-primary"
+              )}
+            >
+              <SendHorizontal className="size-3.5" aria-hidden />
+              Open
+            </Link>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -342,6 +357,12 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
       <CampaignRecipientsDialog
         campaign={viewingRecipients}
         onClose={() => setViewingRecipients(null)}
+      />
+    ) : null}
+    {previewingCampaign ? (
+      <CampaignPreviewDialog
+        campaign={previewingCampaign}
+        onClose={() => setPreviewingCampaign(null)}
       />
     ) : null}
     </>
@@ -398,6 +419,202 @@ function useCampaignResumePreviewUrl(campaignId: string, enabled: boolean) {
   }, [campaignId, enabled]);
 
   return { url, loading };
+}
+
+function CampaignPreviewDialog({
+  campaign,
+  onClose,
+}: {
+  campaign: Campaign;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CampaignDetailResponse | null>(null);
+  const { url: resumePreviewUrl, loading: resumePreviewLoading } =
+    useCampaignResumePreviewUrl(campaign.id, campaign.resumeAttached);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      const { data, error: fetchError } = await fetchCampaignDetail(campaign.id);
+      if (cancelled) return;
+      if (fetchError || !data) {
+        setError(fetchError?.message ?? "Could not load campaign.");
+        setDetail(null);
+      } else {
+        setDetail(data);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaign.id]);
+
+  const sentLabel = campaign.sentAt
+    ? `Sent ${formatSentAt(campaign.sentAt)}`
+    : `Updated ${formatSentAt(campaign.updatedAt)}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close campaign preview"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="campaign-preview-title"
+        className="relative z-10 flex max-h-[min(44rem,calc(100vh-1.5rem))] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="campaign-preview-title"
+              className="text-base font-semibold text-foreground"
+            >
+              Campaign preview
+            </h2>
+            <p className="mt-1 truncate text-sm text-muted-foreground">
+              {campaign.company}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{sentLabel}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X aria-hidden />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Loading campaign…
+            </div>
+          ) : error || !detail ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error ?? "Could not load campaign."}
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Subject
+                </p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {detail.subject}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Message
+                </p>
+                <div className="mt-2 whitespace-pre-wrap rounded-xl border border-border bg-muted/25 px-3 py-3 text-sm leading-relaxed text-foreground">
+                  {detail.body_text}
+                </div>
+              </div>
+
+              {campaign.resumeAttached ? (
+                <div>
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Resume
+                  </p>
+                  {resumePreviewLoading ? (
+                    <div className="mt-2 flex min-h-32 items-center justify-center rounded-xl border border-border bg-muted/25">
+                      <Loader2
+                        aria-hidden
+                        className="size-5 animate-spin text-muted-foreground"
+                      />
+                    </div>
+                  ) : resumePreviewUrl ? (
+                    <iframe
+                      title={`Resume for ${campaign.title}`}
+                      src={`${resumePreviewUrl}#view=FitH&toolbar=0&navpanes=0`}
+                      className="mt-2 aspect-[8.5/11] w-full rounded-xl border border-border bg-muted/20"
+                    />
+                  ) : (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Resume attached
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              <div>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Recipients ({detail.recipients.length})
+                </p>
+                {detail.recipients.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    No recipients recorded.
+                  </p>
+                ) : (
+                  <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                    {detail.recipients.map((recipient, index) => (
+                      <li
+                        key={`${recipient.email}-${index}`}
+                        className="rounded-xl border border-border bg-muted/25 px-3 py-2.5"
+                      >
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {recipient.greeting_name?.trim() || "Recruiter"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {recipient.email}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-xl"
+            onClick={onClose}
+          >
+            Close
+          </Button>
+          <Link
+            href={`/dashboard/new?campaign=${encodeURIComponent(campaign.id)}`}
+            className={cn(buttonVariants(), "rounded-xl")}
+            onClick={onClose}
+          >
+            Open in editor
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CampaignRecipientsDialog({
