@@ -3,14 +3,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { serverBackendBaseUrl } from "@/lib/backendApi";
+import { loginErrorUrl, safeNextPath } from "@/lib/safeNextPath";
 import { getSupabaseEnv } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-function safeNext(searchParams: URLSearchParams) {
-  const next = searchParams.get("next") ?? "/dashboard";
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
-}
 
 async function syncGmailSession({
   accessToken,
@@ -50,14 +46,14 @@ async function syncGmailSession({
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const next = safeNext(requestUrl.searchParams);
+  const next = safeNextPath(requestUrl.searchParams.get("next"));
   const redirectUrl = new URL(next, requestUrl.origin);
   const response = NextResponse.redirect(redirectUrl);
   const cookieStore = await cookies();
 
   if (!code) {
     return NextResponse.redirect(
-      new URL("/login?error=missing_code", requestUrl.origin)
+      loginErrorUrl(requestUrl.origin, "missing_code", next)
     );
   }
 
@@ -66,7 +62,7 @@ export async function GET(request: Request) {
     env = getSupabaseEnv();
   } catch {
     return NextResponse.redirect(
-      new URL("/login?error=supabase_config", requestUrl.origin)
+      loginErrorUrl(requestUrl.origin, "supabase_config", next)
     );
   }
 
@@ -89,14 +85,14 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.session) {
     return NextResponse.redirect(
-      new URL("/login?error=exchange", requestUrl.origin)
+      loginErrorUrl(requestUrl.origin, "exchange", next)
     );
   }
 
   const providerRefreshToken = data.session.provider_refresh_token;
   if (!providerRefreshToken) {
     return NextResponse.redirect(
-      new URL("/login?error=gmail_token", requestUrl.origin)
+      loginErrorUrl(requestUrl.origin, "gmail_token", next)
     );
   }
 
@@ -108,7 +104,7 @@ export async function GET(request: Request) {
 
   if (!sync.ok) {
     return NextResponse.redirect(
-      new URL(`/login?error=${sync.errorCode}`, requestUrl.origin)
+      loginErrorUrl(requestUrl.origin, sync.errorCode ?? "gmail_session", next)
     );
   }
 

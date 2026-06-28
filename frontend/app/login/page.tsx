@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { GOOGLE_OAUTH_SCOPES } from "@/lib/auth";
+import { GOOGLE_OAUTH_SCOPES, safeNextPath } from "@/lib/auth";
 import {
   createClient,
   isSupabaseConfigured,
@@ -48,6 +48,7 @@ function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const err = searchParams.get("error");
+  const next = safeNextPath(searchParams.get("next"));
   const supabaseConfigured = isSupabaseConfigured();
   const [checkingSession, setCheckingSession] = useState(supabaseConfigured);
   const [startingLogin, setStartingLogin] = useState(false);
@@ -63,7 +64,7 @@ function LoginInner() {
       .then(({ data }) => {
         if (cancelled) return;
         if (data.user) {
-          router.replace("/dashboard");
+          router.replace(next);
           return;
         }
         setCheckingSession(false);
@@ -75,7 +76,7 @@ function LoginInner() {
     return () => {
       cancelled = true;
     };
-  }, [router, supabaseConfigured]);
+  }, [router, supabaseConfigured, next]);
 
   const errorMessage =
     err === "access_denied"
@@ -109,7 +110,7 @@ function LoginInner() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
           scopes: GOOGLE_OAUTH_SCOPES,
           queryParams: {
             access_type: "offline",

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
+import { loginPathWithNext } from "@/lib/safeNextPath";
 import {
   createClient,
   isSupabaseConfigured,
@@ -19,8 +20,12 @@ export function DashboardAuthBoundary({
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
+    const loginPath = loginPathWithNext(
+      `${window.location.pathname}${window.location.search}`
+    );
+
     if (!isSupabaseConfigured()) {
-      router.replace("/login");
+      router.replace(loginPath);
       setReady(true);
       return;
     }
@@ -33,13 +38,13 @@ export function DashboardAuthBoundary({
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error || !data.user) {
-          router.replace("/login");
+          router.replace(loginPath);
           return;
         }
         setAllowed(true);
       })
       .catch(() => {
-        if (!cancelled) router.replace("/login");
+        if (!cancelled) router.replace(loginPath);
       })
       .finally(() => {
         if (!cancelled) setReady(true);
