@@ -4,14 +4,14 @@ const points = [
   {
     title: "LinkedIn messages don't work",
     description:
-      "Recruiters get thousands of LinkedIn spam. Yours is easy to ignore. Email from a real inbox cuts through the noise.",
+      "Recruiters get thousands of LinkedIn spam. An email from a real inbox cuts through the noise.",
     icon: MessageSquareOff,
-    contrast: true,
+    contrast: false,
   },
   {
     title: "100% verified recruiter emails",
     description:
-      "We source from a database of real recruiter emails, not stale lists. We'll provide their linkedin as proof.",
+      "We source from a database of real recruiter emails, not stale lists. You'll be able to browse their Linkedin as proof.",
     icon: MailCheck,
     contrast: false,
   },

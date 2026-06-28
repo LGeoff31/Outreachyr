@@ -2,6 +2,7 @@
 
 import {
   CheckCircle2,
+  Eye,
   FileText,
   Loader2,
   MousePointer2,
@@ -30,24 +31,23 @@ import { cn } from "@/lib/utils";
 const DEMO_RESUME_NAME = "resume_geoffreylee.pdf";
 const DEMO_RESUME_SIZE_KB = 142;
 
-const DEMO_COMPANY = "Nvidia";
+const DEMO_COMPANY = "Google";
 
 const DEMO_SUBJECT =
-  "Nvidia Summer 2027 Software Engineering Internships!";
+  "Google Summer 2027 Software Engineering Internships!";
 
 const DEMO_BODY = `Hi {{first_name}},
 
-I'm Geoffrey Lee (Software Engineering, University of Waterloo).
+I'm Geoffrey Lee (Software Engineering, University of Waterloo, ex-Shopify).
 
-I've previously worked at Shopify and would love to contribute to {{company}}'s distributed systems teams.
-
-I’ve added my resume, and would love the opportunity to interview.
+I saw {{company}} release Summer roles and was particularly interested in the Core Infrastructure team! 
 `;
 
 const DEMO_RECIPIENTS = [
   {
     name: "Aisha Khan",
     firstName: "Aisha",
+    email: "aisha.khan@google.com",
     role: "Technical Recruiter",
     location: "San Francisco, CA",
     initials: "AK",
@@ -55,6 +55,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Michael Park",
     firstName: "Michael",
+    email: "michael.park@google.com",
     role: "Senior Recruiter",
     location: "Palo Alto, CA",
     initials: "MP",
@@ -62,6 +63,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "David Lin",
     firstName: "David",
+    email: "david.lin@google.com",
     role: "University Recruiter",
     location: "New York, NY",
     initials: "DL",
@@ -69,6 +71,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Rachel Torres",
     firstName: "Rachel",
+    email: "rachel.torres@google.com",
     role: "Campus Recruiting Lead",
     location: "Denver, CO",
     initials: "RT",
@@ -76,6 +79,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "James Okonkwo",
     firstName: "James",
+    email: "james.okonkwo@google.com",
     role: "Talent Partner",
     location: "Seattle, WA",
     initials: "JO",
@@ -83,6 +87,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Elena Vasquez",
     firstName: "Elena",
+    email: "elena.vasquez@google.com",
     role: "Engineering Recruiter",
     location: "Austin, TX",
     initials: "EV",
@@ -90,6 +95,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Sam Patel",
     firstName: "Sam",
+    email: "sam.patel@google.com",
     role: "University Relations",
     location: "Chicago, IL",
     initials: "SP",
@@ -97,6 +103,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Jordan Blake",
     firstName: "Jordan",
+    email: "jordan.blake@google.com",
     role: "Leadership Recruiting",
     location: "Boston, MA",
     initials: "JB",
@@ -104,6 +111,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Morgan Chen",
     firstName: "Morgan",
+    email: "morgan.chen@google.com",
     role: "Early Career Recruiter",
     location: "Los Angeles, CA",
     initials: "MC",
@@ -111,6 +119,7 @@ const DEMO_RECIPIENTS = [
   {
     name: "Alex Rivera",
     firstName: "Alex",
+    email: "alex.rivera@google.com",
     role: "Technical Sourcer",
     location: "Washington, DC",
     initials: "AR",
@@ -120,7 +129,7 @@ const DEMO_RECIPIENTS = [
 /** Preview cards the demo cursor visits before jumping to Send. */
 const CURSOR_EMAIL_CLICKS = 2;
 
-const STAGE_H = "min-h-[28rem] sm:min-h-[30rem]";
+const STAGE_H = "min-h-[26rem] sm:min-h-[28rem]";
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -162,6 +171,19 @@ function Cursor() {
       className="ml-px inline-block h-[1em] w-px animate-pulse bg-primary align-text-bottom"
       aria-hidden
     />
+  );
+}
+
+function LinkedInIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={className}
+    >
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
   );
 }
 
@@ -515,17 +537,17 @@ export function LandingCampaignDemo() {
                   : "z-0 opacity-0 pointer-events-none"
               )}
             >
-              <div className="px-5 py-4">
+              <div className="shrink-0 px-5 py-3">
                 <p className="text-xs font-medium text-muted-foreground">
                   Company
                 </p>
-                <p className="mt-2 text-sm font-medium text-foreground">
+                <p className="mt-1.5 text-sm font-medium text-foreground">
                   {DEMO_COMPANY}
                 </p>
               </div>
               <Separator />
 
-              <div className="px-5 py-4">
+              <div className="shrink-0 px-5 py-3">
                 <p className="text-xs font-medium text-muted-foreground">
                   Subject
                 </p>
@@ -546,16 +568,16 @@ export function LandingCampaignDemo() {
               </div>
               <Separator />
 
-              <div className="px-5 py-4">
-                <p className="text-xs font-medium text-muted-foreground">
+              <div className="flex min-h-0 flex-1 flex-col px-5 py-3">
+                <p className="shrink-0 text-xs font-medium text-muted-foreground">
                   Message
                 </p>
-                <div className="relative mt-2">
+                <div className="relative mt-2 flex min-h-0 flex-1 flex-col">
                   <Textarea
                     readOnly
                     tabIndex={-1}
                     value={typedBody}
-                    className="min-h-[6.5rem] cursor-default resize-none rounded-xl border-border bg-muted/30 font-mono text-xs leading-relaxed sm:text-sm"
+                    className="min-h-0 flex-1 cursor-default resize-none rounded-xl border-border bg-muted/30 font-mono text-xs leading-relaxed sm:text-sm"
                     aria-hidden
                   />
                   {activeField === "body" ? (
@@ -565,32 +587,31 @@ export function LandingCampaignDemo() {
                   ) : null}
                 </div>
               </div>
-              <Separator />
+              <Separator className="shrink-0" />
 
-              <div className="px-5 py-4">
+              <div className="shrink-0 px-5 py-2">
                 <p className="text-xs font-medium text-muted-foreground">
                   Resume <span className="font-normal">(optional)</span>
                 </p>
                 <div
                   className={cn(
-                    "mt-2 transition-all duration-300",
+                    "mt-1 transition-all duration-300",
                     resumeAttached
                       ? "opacity-100"
                       : "opacity-40"
                   )}
                 >
-                  <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-3">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
-                      <FileText aria-hidden="true" className="size-4" />
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5">
+                    <FileText
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    />
+                    <p className="truncate text-xs font-medium text-foreground">
+                      {DEMO_RESUME_NAME}
+                    </p>
+                    <span className="shrink-0 text-[0.65rem] text-muted-foreground">
+                      {DEMO_RESUME_SIZE_KB} KB
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {DEMO_RESUME_NAME}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {DEMO_RESUME_SIZE_KB} KB
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -642,35 +663,51 @@ export function LandingCampaignDemo() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                            To
-                          </p>
                           <p className="truncate text-xs font-medium text-foreground">
                             {person.name}
+                            <span className="text-muted-foreground">
+                              {" "}
+                              · {person.email}
+                            </span>
                           </p>
-                          <p className="truncate text-[0.7rem] text-muted-foreground">
-                            {person.role} · {person.location}
-                          </p>
-                          <p className="mt-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Subject
-                          </p>
-                          <p className="line-clamp-1 text-xs font-semibold text-foreground">
+                          <p className="mt-1 line-clamp-1 text-xs font-semibold text-foreground">
                             {DEMO_SUBJECT}
                           </p>
-                          <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-[0.75rem] leading-relaxed text-muted-foreground">
+                          <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
                             {recipientBodies[i]}
                           </p>
                           {resumeAttached ? (
-                            <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-[0.7rem]">
+                            <p className="mt-1 flex items-center gap-1 text-[0.65rem] text-muted-foreground">
                               <FileText
-                                className="size-3.5 shrink-0 text-primary"
+                                className="size-3 shrink-0"
                                 aria-hidden
                               />
-                              <span className="truncate font-medium text-foreground">
-                                {DEMO_RESUME_NAME}
-                              </span>
-                            </div>
+                              <span className="truncate">{DEMO_RESUME_NAME}</span>
+                            </p>
                           ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-sm"
+                            className="pointer-events-none rounded-lg text-[#0A66C2]"
+                            aria-hidden
+                            tabIndex={-1}
+                          >
+                            <LinkedInIcon className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="pointer-events-none h-8 rounded-lg px-2.5 text-xs"
+                            aria-hidden
+                            tabIndex={-1}
+                          >
+                            <Eye className="size-3.5" aria-hidden />
+                            View full
+                          </Button>
                         </div>
                       </div>
                     </div>

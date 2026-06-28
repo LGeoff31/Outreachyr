@@ -32,20 +32,6 @@ const EMAIL_PROOF_EXAMPLES = [
     },
   },
   {
-    company: "Gemini",
-    logo: "/logos/gemini.png",
-    outreach: {
-      src: "/logos/example2_me.png",
-      alt: "Outreach email sent to a Gemini recruiter with resume attached",
-      caption: "Outreach email + resume",
-    },
-    reply: {
-      src: "/logos/example2_you.png",
-      alt: "Gemini recruiter reply moving the candidate forward",
-      caption: "Recruiter reply · moved forward",
-    },
-  },
-  {
     company: "Cockroach Labs",
     logo: "/logos/cockroach.png",
     outreach: {
@@ -71,6 +57,20 @@ const EMAIL_PROOF_EXAMPLES = [
       src: "/logos/example4_me.png",
       alt: "Point72 reply confirming next steps in the process",
       caption: "Recruiter reply · next steps",
+    },
+  },
+  {
+    company: "Gemini",
+    logo: "/logos/gemini.png",
+    outreach: {
+      src: "/logos/example2_me.png",
+      alt: "Outreach email sent to a Gemini recruiter with resume attached",
+      caption: "Outreach email + resume",
+    },
+    reply: {
+      src: "/logos/example2_you.png",
+      alt: "Gemini recruiter reply moving the candidate forward",
+      caption: "Recruiter reply · moved forward",
     },
   },
 ] as const;
