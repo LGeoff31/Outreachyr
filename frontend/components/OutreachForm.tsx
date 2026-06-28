@@ -9,6 +9,7 @@ import {
   Eye,
   FileText,
   Loader2,
+  Plus,
   Search,
   SendHorizontal,
   Trash2,
@@ -109,7 +110,7 @@ export function OutreachForm() {
 
   const [company, setCompany] = useState("");
   const [testMode, setTestMode] = useState(false);
-  const [testEmail, setTestEmail] = useState("");
+  const [testEmails, setTestEmails] = useState<string[]>([]);
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -444,9 +445,16 @@ export function OutreachForm() {
 
   useEffect(() => {
     if (!testMode) return;
-    const email = testEmail.trim();
-    setRecipients(isValidEmail(email) ? [{ email }] : []);
-  }, [testMode, testEmail]);
+    const seen = new Set<string>();
+    const next: Recipient[] = [];
+    for (const raw of testEmails) {
+      const email = raw.trim().toLowerCase();
+      if (!isValidEmail(email) || seen.has(email)) continue;
+      seen.add(email);
+      next.push({ email });
+    }
+    setRecipients(next);
+  }, [testMode, testEmails]);
 
   const companyReady =
     testMode || company.trim().length > 0;
@@ -467,7 +475,7 @@ export function OutreachForm() {
           ? "Wait for recruiter search to finish."
           : recipients.length === 0
             ? testMode
-              ? "Enter a valid test email address."
+              ? "Add at least one valid test email address."
               : "Fetch recruiters first."
             : undefined;
   const companyInvalid = err && !companyReady;
@@ -479,7 +487,7 @@ export function OutreachForm() {
     setFile(null);
     setSelectedSavedResumeId(null);
     setTestMode(false);
-    setTestEmail("");
+    setTestEmails([]);
     setErr(false);
     setErrorDetails(null);
 
@@ -488,6 +496,20 @@ export function OutreachForm() {
       void applyLibraryResume(defaultRow);
     }
   }, [applyLibraryResume, savedResumes]);
+
+  const addTestEmail = useCallback((raw: string) => {
+    const email = raw.trim().toLowerCase();
+    if (!isValidEmail(email)) return false;
+    let added = false;
+    setTestEmails((prev) => {
+      if (prev.some((entry) => entry.trim().toLowerCase() === email)) {
+        return prev;
+      }
+      added = true;
+      return [...prev, email];
+    });
+    return added;
+  }, []);
 
   const removeRecipientAt = useCallback(
     (index: number) => {
@@ -512,15 +534,24 @@ export function OutreachForm() {
       return;
     }
 
-    const nextRecipients = recipients.filter((_, i) => i !== target.index);
-    setRecipients(nextRecipients);
+    if (testMode) {
+      const email = recipient.email?.trim().toLowerCase();
+      if (email) {
+        setTestEmails((prev) =>
+          prev.filter((entry) => entry.trim().toLowerCase() !== email)
+        );
+      }
+    } else {
+      const nextRecipients = recipients.filter((_, i) => i !== target.index);
+      setRecipients(nextRecipients);
+    }
     setSendSuccess(false);
     setSendQueued(false);
     setErr(false);
     setErrorDetails(null);
     setMessage("");
     setRecipientToRemove(null);
-  }, [recipientToRemove, recipients]);
+  }, [recipientToRemove, recipients, testMode]);
 
   const runCampaign = useCallback(
     async (dryRun: boolean) => {
@@ -906,11 +937,10 @@ export function OutreachForm() {
             resumeFileName={file?.name ?? null}
             resumePreviewUrl={resumePreviewUrl}
             testMode={testMode}
-            testEmail={testEmail}
-            onTestEmailChange={setTestEmail}
+            onAddTestEmail={addTestEmail}
             onTestModeChange={(enabled) => {
               setTestMode(enabled);
-              setTestEmail("");
+              setTestEmails([]);
               setRecipients([]);
             }}
             onRemoveRecipient={removeRecipientAt}
@@ -1082,8 +1112,7 @@ function ReviewPanel({
   resumeFileName,
   resumePreviewUrl,
   testMode,
-  testEmail,
-  onTestEmailChange,
+  onAddTestEmail,
   onTestModeChange,
   onRemoveRecipient,
   loading,
@@ -1101,8 +1130,7 @@ function ReviewPanel({
   resumeFileName: string | null;
   resumePreviewUrl: string | null;
   testMode: boolean;
-  testEmail: string;
-  onTestEmailChange: (value: string) => void;
+  onAddTestEmail: (email: string) => boolean;
   onTestModeChange: (enabled: boolean) => void;
   onRemoveRecipient: (index: number) => void;
   loading: "preview" | "send" | null;
@@ -1114,6 +1142,27 @@ function ReviewPanel({
   actionsLocked?: boolean;
 }) {
   const [fullPreview, setFullPreview] = useState<Recipient | null>(null);
+  const [testEmailDraft, setTestEmailDraft] = useState("");
+  const [testEmailError, setTestEmailError] = useState<string | null>(null);
+
+  function submitTestEmail() {
+    const trimmed = testEmailDraft.trim();
+    if (!trimmed) {
+      setTestEmailError(null);
+      return;
+    }
+    if (!isValidEmail(trimmed)) {
+      setTestEmailError("Enter a valid email address.");
+      return;
+    }
+    const added = onAddTestEmail(trimmed);
+    if (!added) {
+      setTestEmailError("That address is already in the list.");
+      return;
+    }
+    setTestEmailDraft("");
+    setTestEmailError(null);
+  }
 
   useEffect(() => {
     if (!fullPreview) return;
@@ -1188,30 +1237,58 @@ function ReviewPanel({
               htmlFor="test-email"
               className="text-xs font-medium text-muted-foreground"
             >
-              Test email address
+              Test email addresses
             </label>
-            <Input
-              id="test-email"
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              value={testEmail}
-              disabled={actionsLocked}
-              placeholder="you@example.com"
-              onChange={(event) => onTestEmailChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.preventDefault();
-              }}
-              aria-invalid={
-                (testEmail.trim().length > 0 && !isValidEmail(testEmail)) ||
-                undefined
-              }
-              className="mt-2 h-10 rounded-xl text-sm"
-            />
-            <p className="mt-2 text-xs text-muted-foreground">
-              The campaign email will be sent only to this address so you can
-              check how it looks.
-            </p>
+            <div className="mt-2 flex gap-2">
+              <Input
+                id="test-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={testEmailDraft}
+                disabled={actionsLocked}
+                placeholder="you@example.com"
+                onChange={(event) => {
+                  setTestEmailDraft(event.target.value);
+                  if (testEmailError) setTestEmailError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitTestEmail();
+                  }
+                }}
+                aria-invalid={
+                  (testEmailDraft.trim().length > 0 &&
+                    !isValidEmail(testEmailDraft)) ||
+                  testEmailError
+                    ? true
+                    : undefined
+                }
+                className="h-10 min-w-0 flex-1 rounded-xl text-sm"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={actionsLocked || !testEmailDraft.trim()}
+                className="h-10 shrink-0 gap-1.5 rounded-xl px-3"
+                onClick={submitTestEmail}
+              >
+                <Plus className="size-4" aria-hidden />
+                Add
+              </Button>
+            </div>
+            {testEmailError ? (
+              <p className="mt-2 text-xs text-destructive" role="alert">
+                {testEmailError}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Add one or more addresses. The campaign will be sent only to
+                these emails so you can check how it looks.
+              </p>
+            )}
           </div>
         ) : null}
         <div className="max-h-none overflow-y-visible px-5 py-4 xl:max-h-[calc(100vh-18rem)] xl:overflow-y-auto">
@@ -1224,7 +1301,7 @@ function ReviewPanel({
                 <EmptyTitle>No recipients yet</EmptyTitle>
                 <EmptyDescription>
                   {testMode
-                    ? "Enter a valid email address above to send yourself a test."
+                    ? "Add test email addresses above, then preview each message here."
                     : "Find recruiters for your target company, then preview each email here."}
                 </EmptyDescription>
               </EmptyHeader>

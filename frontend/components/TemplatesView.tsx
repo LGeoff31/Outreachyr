@@ -403,7 +403,7 @@ export function TemplatesView() {
                 <AutosizeTextarea
                   value={formBody}
                   onChange={(e) => setFormBody(e.target.value)}
-                  placeholder="Hi {{first_ndwaame}}, ..."
+                  placeholder="Hi {{first_name}}, ..."
                   className="rounded-xl text-sm leading-6"
                 />
               </label>
