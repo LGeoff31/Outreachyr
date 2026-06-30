@@ -48,10 +48,10 @@ def send_messages_oauth(creds: Credentials, messages: list[EmailMessage]) -> Non
         "gmail", "v1", credentials=creds, cache_discovery=False
     )
 
-    initial_min, initial_max = _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 12.0, 25.0)
-    spacing_min, spacing_max = _delay_range("GMAIL_SEND_SPACING_SEC", 30.0, 70.0)
+    initial_min, initial_max = _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 5.0, 12.0)
+    spacing_min, spacing_max = _delay_range("GMAIL_SEND_SPACING_SEC", 22.0, 48.0)
     chunk_pause_min, chunk_pause_max = _delay_range(
-        "GMAIL_SEND_CHUNK_PAUSE_SEC", 90.0, 180.0
+        "GMAIL_SEND_CHUNK_PAUSE_SEC", 50.0, 100.0
     )
 
     _sleep_random(initial_min, initial_max)

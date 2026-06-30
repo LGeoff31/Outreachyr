@@ -20,6 +20,7 @@ import {
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -53,6 +54,7 @@ import {
   type BillingStatus,
 } from "@/lib/billing";
 import { CompanySelect } from "@/components/CompanySelect";
+import { CampaignUnlockRequired } from "@/components/CampaignUnlockRequired";
 import {
   diagnoseGmailSendFailure,
   syncGmailSendSession,
@@ -153,13 +155,19 @@ export function OutreachForm() {
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(
     null
   );
+  const [billingLoading, setBillingLoading] = useState(true);
   const [showPaywall, setShowPaywall] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    void fetchBillingStatus().then(setBillingStatus);
+    if (!isSupabaseConfigured()) {
+      setBillingLoading(false);
+      return;
+    }
+    void fetchBillingStatus()
+      .then(setBillingStatus)
+      .finally(() => setBillingLoading(false));
   }, []);
 
   useEffect(() => {
@@ -471,6 +479,9 @@ export function OutreachForm() {
     !testMode &&
     billingStatus?.billing_enabled === true &&
     billingStatus.can_send === false;
+  const campaignAccessBlocked =
+    billingStatus?.billing_enabled === true &&
+    billingStatus.can_send === false;
   const canSend =
     recipients.length > 0 &&
     loading === null &&
@@ -672,8 +683,9 @@ export function OutreachForm() {
           );
           if (res.status === 402 || payload?.code === "campaign_limit") {
             if (payload?.billing) setBillingStatus(payload.billing);
-            setShowPaywall(true);
+            setErr(false);
             setErrorDetails(null);
+            setMessage("");
             return;
           }
           if (res.status === 401 || payload?.auth_required) {
@@ -717,17 +729,19 @@ export function OutreachForm() {
           setSendSuccess(true);
           setSendQueued(queued);
           setCelebrateSend((n) => n + 1);
-          void fetchBillingStatus().then(setBillingStatus);
+          if (payload.billing) {
+            setBillingStatus(payload.billing);
+          } else if (!testMode) {
+            void fetchBillingStatus().then(setBillingStatus);
+          }
           if (testMode) {
             setMessage(
               queued
-                ? `Sending to your test address in the background. Emails are spaced out in small batches so they don't look like spam — check your Sent folder shortly.`
-                : `Sent to ${recipientCount} test address. Check your sent folder to confirm delivery.`
+                ? queuedSendMessage(recipientCount, true)
+                : `Sent to ${recipientCount} test ${recipientCount === 1 ? "address" : "addresses"}. Check your Sent folder to confirm delivery.`
             );
           } else if (queued) {
-            setMessage(
-              `Campaign started for ${recipientCount} recipient(s). Emails are sent in spaced batches from your Gmail account (not all at once) to protect deliverability. Check your Sent folder over the next several minutes.`
-            );
+            setMessage(queuedSendMessage(recipientCount, false));
           } else {
             setMessage(
               `Sent to ${recipientCount} recipient(s). Check your inbox for replies.`
@@ -760,6 +774,18 @@ export function OutreachForm() {
     ]
   );
 
+  if (billingLoading) {
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background text-muted-foreground">
+        <Loader2 className="size-8 animate-spin" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (campaignAccessBlocked) {
+    return <CampaignUnlockRequired />;
+  }
+
   return (
     <form
       onSubmit={(event) => {
@@ -770,9 +796,12 @@ export function OutreachForm() {
     >
       <div className="mx-auto w-full max-w-[90rem] px-5 py-5 sm:px-8 lg:px-10 lg:py-7">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            New campaign
-          </h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              New campaign
+            </h1>
+            <FreeCampaignsBadge status={billingStatus} />
+          </div>
           {campaignFromUrl && loadedCampaign && !campaignLoading ? (
             <p className="mt-2 text-sm text-muted-foreground">
               Prefilled from a previous campaign.
@@ -1348,39 +1377,48 @@ function ReviewPanel({
         </div>
 
         {message || errorDetails ? (
-          <Alert
-            role={err ? "alert" : "status"}
-            variant={err ? "destructive" : "default"}
-            className={cn(
-              "mx-5 mb-5 rounded-xl",
-              err && "destructive",
-              !err && sendSuccess && "border-primary/30 bg-primary/10 text-foreground",
-              !err && !sendSuccess && "border-primary/20 bg-accent text-accent-foreground"
-            )}
-          >
-            {err ? (
-              <AlertCircle aria-hidden="true" />
-            ) : sendSuccess ? (
-              <CheckCircle2 aria-hidden="true" />
-            ) : null}
-            {err ? (
-              <AlertTitle>Error</AlertTitle>
-            ) : sendSuccess ? (
-              <AlertTitle>
-                {sendQueued ? "Campaign sending" : "Campaign sent"}
-              </AlertTitle>
-            ) : null}
-            <AlertDescription
-              className={cn(!err && "text-accent-foreground/80")}
+          <div className="min-w-0 px-5 pb-5">
+            <Alert
+              role={err ? "alert" : "status"}
+              variant={err ? "destructive" : "default"}
+              className={cn(
+                "min-w-0 rounded-xl",
+                err && "destructive",
+                !err &&
+                  sendSuccess &&
+                  "border-primary/30 bg-primary/10 text-foreground",
+                !err &&
+                  !sendSuccess &&
+                  "border-primary/20 bg-accent text-accent-foreground"
+              )}
             >
-              {message}
-              {err && errorDetails ? (
-                <span className="mt-2 block font-mono text-xs leading-relaxed text-destructive/90">
-                  {errorDetails}
-                </span>
+              {err ? (
+                <AlertCircle aria-hidden="true" />
+              ) : sendSuccess ? (
+                <CheckCircle2 aria-hidden="true" />
               ) : null}
-            </AlertDescription>
-          </Alert>
+              {err ? (
+                <AlertTitle>Error</AlertTitle>
+              ) : sendSuccess ? (
+                <AlertTitle>
+                  {sendQueued ? "Campaign sending" : "Campaign sent"}
+                </AlertTitle>
+              ) : null}
+              <AlertDescription
+                className={cn(
+                  "min-w-0 break-words",
+                  !err && "text-accent-foreground/80"
+                )}
+              >
+                {message}
+                {err && errorDetails ? (
+                  <span className="mt-2 block break-all font-mono text-xs leading-relaxed text-destructive/90">
+                    {errorDetails}
+                  </span>
+                ) : null}
+              </AlertDescription>
+            </Alert>
+          </div>
         ) : null}
       </CardContent>
     </Card>
@@ -1641,6 +1679,60 @@ function recipientNameFromEmail(email?: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function estimateSendDurationMinutes(recipientCount: number): number {
+  const count = Math.max(1, recipientCount);
+  if (count === 1) return 1;
+
+  const initialMaxSec = 12;
+  const spacingMaxSec = 48;
+  const chunkPauseMaxSec = 100;
+  const gaps = count - 1;
+  const chunkPauses = Math.max(0, Math.floor(gaps / 2));
+  const totalSec =
+    initialMaxSec + gaps * spacingMaxSec + chunkPauses * chunkPauseMaxSec;
+
+  return Math.max(2, Math.ceil(totalSec / 60));
+}
+
+function withinMinutesLabel(minutes: number) {
+  return minutes === 1 ? "within 1 minute" : `within ${minutes} minutes`;
+}
+
+function queuedSendMessage(recipientCount: number, testMode: boolean) {
+  const minutes = estimateSendDurationMinutes(recipientCount);
+  const timing = withinMinutesLabel(minutes);
+
+  if (testMode) {
+    const target =
+      recipientCount === 1
+        ? "your test address"
+        : `your ${recipientCount} test addresses`;
+    return `Sending to ${target} in the background. Emails go out one at a time to avoid it being spam and should all be sent ${timing}. Check your Sent folder.`;
+  }
+
+  const recipientLabel =
+    recipientCount === 1 ? "1 recipient" : `${recipientCount} recipients`;
+  return `Campaign started for ${recipientLabel}. Emails go out one at a time to avoid it being spam and should all be sent ${timing}. Check your Sent folder.`;
+}
+
+function FreeCampaignsBadge({ status }: { status: BillingStatus | null }) {
+  if (!status?.billing_enabled || status.unlocked) return null;
+  if (status.free_remaining === null) return null;
+
+  const remaining = status.free_remaining;
+
+  return (
+    <Badge
+      variant={remaining === 0 ? "destructive" : "outline"}
+      className="h-6 rounded-full px-2.5 text-[0.7rem] font-medium"
+    >
+      {remaining === 0
+        ? "No free campaigns left"
+        : `${remaining} free ${remaining === 1 ? "campaign" : "campaigns"} left`}
+    </Badge>
+  );
 }
 
 function noRecruitersMessage(company: string) {

@@ -233,6 +233,28 @@ def _billing_block_response(request: Request) -> JSONResponse | None:
         )
 
 
+def _billing_status_for_owner(
+    request: Request, owner_id: uuid.UUID | None
+) -> dict | None:
+    from billing import billing_enabled, billing_status_for_user
+    from database import make_session_factory
+
+    if owner_id is None or not billing_enabled():
+        return None
+    try:
+        session_factory = make_session_factory()
+    except RuntimeError:
+        return None
+
+    user = _supabase_user_from_request(request)
+    with session_factory() as db:
+        return billing_status_for_user(
+            db,
+            owner_id,
+            email=user.get("email") if user else None,
+        )
+
+
 def _send_campaign_in_background(
     refresh_token: str,
     sender_email: str,
@@ -244,19 +266,11 @@ def _send_campaign_in_background(
     body_text: str,
     owner_id: uuid.UUID | None,
     resume_storage_path: str | None,
+    test_mode: bool = False,
 ) -> None:
     try:
         creds = google_auth.credentials_from_refresh(refresh_token)
         send_messages_oauth(creds, messages)
-        if owner_id:
-            persist_sent_campaign(
-                owner_id,
-                company=company,
-                subject=subject,
-                body_text=body_text,
-                people=people,
-                resume_storage_path=resume_storage_path,
-            )
     except Exception:
         logger.exception(
             "Background campaign send failed for %s (%d messages)",
@@ -272,6 +286,7 @@ def _send_campaign(
     recipient_details: list[dict[str, str]] | None = None,
     company: str,
     dry_run: bool,
+    test_mode: bool = False,
     subject: str | None,
     body_opt: str | None,
     resume_bytes: bytes | None,
@@ -389,6 +404,18 @@ def _send_campaign(
             resume_bytes,
         )
 
+        billing_status = None
+        if owner_id and not test_mode:
+            persist_sent_campaign(
+                owner_id,
+                company=company,
+                subject=subj_final,
+                body_text=body_final,
+                people=people,
+                resume_storage_path=path_clean,
+            )
+            billing_status = _billing_status_for_owner(request, owner_id)
+
         thread = threading.Thread(
             target=_send_campaign_in_background,
             kwargs={
@@ -401,18 +428,22 @@ def _send_campaign(
                 "body_text": body_final,
                 "owner_id": owner_id,
                 "resume_storage_path": path_clean,
+                "test_mode": test_mode,
             },
             name=f"campaign-send-{owner_id or 'anon'}",
             daemon=False,
         )
         thread.start()
-        return {
+        response: dict = {
             "ok": True,
             "dry_run": False,
             "queued": True,
             "sent": len(people),
             "count": len(people),
         }
+        if billing_status is not None:
+            response["billing"] = billing_status
+        return response
 
     return JSONResponse(
         status_code=503,
@@ -473,7 +504,7 @@ def _run_send(
 
         try:
             if dry_run:
-                recipient_details = outreach.discover_candidates(
+                recipient_details = outreach.discover_preview_candidates(
                     company,
                     school_name=resume_profile_school,
                     school_normalized=resume_profile_school_normalized,
@@ -517,7 +548,7 @@ def _run_send(
     subj = subject.strip() or None
     body_opt = body_text if body_text.strip() else None
 
-    if not dry_run and not test_mode:
+    if not test_mode:
         blocked = _billing_block_response(request)
         if blocked is not None:
             return blocked
@@ -528,6 +559,7 @@ def _run_send(
         recipient_details=recipient_details,
         company=company,
         dry_run=dry_run,
+        test_mode=test_mode,
         subject=subj,
         body_opt=body_opt,
         resume_bytes=resume_bytes,

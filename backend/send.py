@@ -1,5 +1,7 @@
 import argparse
+import hashlib
 import json
+import random
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.error import HTTPError
@@ -11,6 +13,48 @@ from utils import _letters, _first_from_email, domain_for_company
 PLACEHOLDER = "__FIRST_NAME__"
 TO = []  # (optional) insert specific recruiter emails here
 RecruiterCandidate = dict[str, str]
+PREVIEW_RECRUITER_LIMIT = 5
+_preview_discovery_cache: dict[str, list[RecruiterCandidate]] = {}
+
+
+def clear_preview_discovery_cache() -> None:
+    _preview_discovery_cache.clear()
+
+
+def _preview_discovery_cache_key(
+    company: str,
+    *,
+    school_name: str | None,
+    school_normalized: str | None,
+) -> str:
+    company_key = company.strip().lower()
+    school = (school_name or school_normalized or "").strip().lower()
+    return f"{company_key}|{school}"
+
+
+def _recruiter_preview_rank(email: str) -> str:
+    return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()
+
+
+def select_preview_recipients(
+    candidates: list[RecruiterCandidate],
+    *,
+    limit: int = PREVIEW_RECRUITER_LIMIT,
+) -> list[RecruiterCandidate]:
+    """Pick a stable pseudo-random subset for preview (same emails => same picks)."""
+    if limit <= 0 or len(candidates) <= limit:
+        return list(candidates)
+    ranked = sorted(candidates, key=lambda c: _recruiter_preview_rank(c["email"]))
+    return ranked[:limit]
+
+
+def shuffle_preview_order(
+    candidates: list[RecruiterCandidate],
+) -> list[RecruiterCandidate]:
+    """Randomize display order while keeping the same people."""
+    out = list(candidates)
+    random.shuffle(out)
+    return out
 
 
 def apply_merge_fields(
@@ -180,6 +224,31 @@ def discover_candidates(
         seen.add(key)
         deduped.append(candidate)
     return deduped
+
+
+def discover_preview_candidates(
+    company: str,
+    *,
+    school_name: str | None = None,
+    school_normalized: str | None = None,
+) -> list[RecruiterCandidate]:
+    """Cached preview fetch: first call hits SerpAPI, repeats reuse the same five."""
+    key = _preview_discovery_cache_key(
+        company,
+        school_name=school_name,
+        school_normalized=school_normalized,
+    )
+    cached = _preview_discovery_cache.get(key)
+    if cached is not None:
+        return shuffle_preview_order(select_preview_recipients(cached))
+
+    full = discover_candidates(
+        company,
+        school_name=school_name,
+        school_normalized=school_normalized,
+    )
+    _preview_discovery_cache[key] = full
+    return shuffle_preview_order(select_preview_recipients(full))
 
 
 def discover(
