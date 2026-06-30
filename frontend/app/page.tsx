@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Lock, PenLine } from "lucide-react";
+import { Lock } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { LandingCampaignDemo } from "@/components/LandingCampaignDemo";
@@ -26,24 +26,15 @@ export default function HomePage() {
               <Lock aria-hidden="true" className="size-5 text-foreground" />
               You approve every send.
             </p>
-            <div className="mt-10 flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-10">
               <Link
                 href="/dashboard/new"
                 className={cn(
                   buttonVariants({ size: "lg" }),
-                  "min-h-12 w-full justify-center gap-2 rounded-xl px-6 text-base font-semibold shadow-lg shadow-primary/15 sm:w-auto"
+                  "inline-flex min-h-12 justify-center gap-2 rounded-xl px-6 text-base font-semibold shadow-lg shadow-primary/15"
                 )}
               >
                 Try it yourself
-              </Link>
-              <Link
-                href="/dashboard"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "lg" }),
-                  "min-h-12 w-full justify-center gap-2 rounded-xl px-6 text-base font-semibold sm:w-auto"
-                )}
-              >
-                Dashboard
               </Link>
             </div>
           </div>

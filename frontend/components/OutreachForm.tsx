@@ -52,7 +52,7 @@ import {
   startCampaignUnlockCheckout,
   type BillingStatus,
 } from "@/lib/billing";
-import { fetchCompanyKeys } from "@/lib/api";
+import { CompanySelect } from "@/components/CompanySelect";
 import {
   diagnoseGmailSendFailure,
   syncGmailSendSession,
@@ -120,7 +120,6 @@ export function OutreachForm() {
     string | null
   >(null);
   const [libraryAttachLoading, setLibraryAttachLoading] = useState(false);
-  const [hints, setHints] = useState<string[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientToRemove, setRecipientToRemove] =
     useState<RecipientRemovalTarget | null>(null);
@@ -152,12 +151,6 @@ export function OutreachForm() {
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     void fetchBillingStatus().then(setBillingStatus);
-  }, []);
-
-  useEffect(() => {
-    fetchCompanyKeys()
-      .then(setHints)
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -794,38 +787,15 @@ export function OutreachForm() {
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(22rem,0.85fr)_minmax(34rem,1.15fr)]">
           <Card className="min-w-0 overflow-hidden rounded-2xl bg-card shadow-sm">
             <CardContent className="space-y-5 px-5 py-5">
-            <div className="relative">
-  <Input
-    id="company"
-    list="company-options"
-    value={company}
-    onChange={(event) => {
-      setCompany(event.target.value);
-      setRecipients([]);
-    }}
-    placeholder={placeholderCompany}
-    className="h-10 rounded-xl pr-11 text-sm font-medium"
-    autoComplete="organization"
-    aria-invalid={companyInvalid || undefined}
-  />
-  {companyReady && (
-    <CheckCircle2
-      aria-hidden="true"
-      className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-primary"
-    />
-  )}
-  <label
-    htmlFor="company"
-    className="absolute left-3 top-0 -translate-y-1/2 text-xs font-medium text-muted-foreground bg-card px-1"
-  >
-    Company
-  </label>
-  <datalist id="company-options">
-    {hints.map((hint) => (
-      <option key={hint} value={hint} />
-    ))}
-  </datalist>
-</div>
+            <CompanySelect
+              value={company}
+              onChange={(next) => {
+                setCompany(next);
+                setRecipients([]);
+              }}
+              invalid={companyInvalid}
+              placeholder={placeholderCompany}
+            />
 
               <div className="relative">
   <Input

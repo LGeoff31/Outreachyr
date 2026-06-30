@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
-  FileText,
   LogOut,
   Mail,
   Plus,
@@ -24,11 +23,10 @@ import {
 } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-type DashboardSection = "Campaigns" | "Templates" | "Resumes";
+type DashboardSection = "Campaigns" | "Resumes";
 
 const primaryNav = [
   { label: "Campaigns", icon: Send, href: "/dashboard" },
-  { label: "Templates", icon: FileText, href: "/dashboard/templates" },
   { label: "Resumes", icon: Mail, href: "/dashboard/resumes" },
 ] satisfies Array<{
   label: DashboardSection;
@@ -176,12 +174,6 @@ export function DashboardShell({
 }
 
 function activeFromPathname(pathname: string): DashboardSection | null {
-  if (
-    pathname === "/dashboard/templates" ||
-    pathname.startsWith("/dashboard/templates/")
-  ) {
-    return "Templates";
-  }
   if (
     pathname === "/dashboard/resumes" ||
     pathname.startsWith("/dashboard/resumes/")
