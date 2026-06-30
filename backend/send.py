@@ -83,6 +83,14 @@ def _ingest_search_items(items: list[dict], domain: str) -> list[RecruiterCandid
     return out
 
 
+def _is_serpapi_no_results_error(message: str) -> bool:
+    lower = message.lower()
+    return (
+        "hasn't returned any results" in lower
+        or "has not returned any results" in lower
+    )
+
+
 def _discover_serpapi(q: str, domain: str, api_key: str) -> list[RecruiterCandidate]:
     combined: list[RecruiterCandidate] = []
     for start in (0, 10):
@@ -107,6 +115,8 @@ def _discover_serpapi(q: str, domain: str, api_key: str) -> list[RecruiterCandid
 
         err = data.get("error")
         if err:
+            if _is_serpapi_no_results_error(str(err)):
+                break
             raise RuntimeError(f"SerpAPI: {err}")
         organic = data.get("organic_results") or []
         if not organic:
@@ -155,7 +165,11 @@ def discover_candidates(
         school_name=school_name,
         school_normalized=school_normalized,
     ):
-        combined.extend(_discover_serpapi(q, domain, api_key))
+        try:
+            combined.extend(_discover_serpapi(q, domain, api_key))
+        except RuntimeError as exc:
+            if not _is_serpapi_no_results_error(str(exc)):
+                raise
 
     seen: set[str] = set()
     deduped: list[RecruiterCandidate] = []

@@ -100,6 +100,21 @@ class SendDiscoveryTests(unittest.TestCase):
         self.assertIn('"Nvidia" "University of Waterloo" recruiter', queries[0])
         self.assertTrue(any("campus recruiter" in q for q in queries[1:]))
 
+    def test_discover_treats_serpapi_no_results_as_empty(self) -> None:
+        def fake_discover_serpapi(q: str, domain: str, api_key: str):
+            raise RuntimeError(
+                "SerpAPI: Google hasn't returned any results for this query."
+            )
+
+        with (
+            patch.object(send, "serpapi_api_key", return_value="test-key"),
+            patch.object(send, "domain_for_company", return_value="palantir.com"),
+            patch.object(send, "_discover_serpapi", side_effect=fake_discover_serpapi),
+        ):
+            recipients = send.discover("Palantir")
+
+        self.assertEqual(recipients, [])
+
 
 if __name__ == "__main__":
     unittest.main()

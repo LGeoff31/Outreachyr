@@ -90,17 +90,24 @@ type SendResponse = ApiErrorBody & {
   code?: string;
 };
 
-const placeholderCompany = "Palantir";
-const placeholderSubject =
-  "Palantir Summer 2027 Software Engineering Co-op";
-const placeholderMessage = `Hi {{first_name}},
+const defaultCompanyLabel = "Palantir";
 
-I'm a CS student interested in building impactful software at {{company}}.
+function defaultSubjectForCompany(company: string) {
+  const name = company.trim() || defaultCompanyLabel;
+  return `${name} Summer 2027 Software Engineering Co-op`;
+}
 
-I'm reaching out to learn more about opportunities for Summer 2027.
+const defaultBodyText = `Hi {{first_name}},
+
+I saw the recent launch at {{company}} and was genuinely impressed by the incredible growth. 
+
+I'm reaching out to see if there are any open roles for  Summer 2027 roles, especially in the forward deployed and platform teams.
+I've previous interned at companies XYZ working on customer-facing products.
+
+I'd love to chat, would you be free Tuesday at 3:00pm?
 
 Best,
-Geoffrey`;
+Your name`;
 
 export function OutreachForm() {
   const searchParams = useSearchParams();
@@ -108,11 +115,13 @@ export function OutreachForm() {
   const templateFromUrl = searchParams.get("template")?.trim() || null;
   const resumeFromUrl = searchParams.get("resume")?.trim() || null;
 
-  const [company, setCompany] = useState("");
+  const [company, setCompany] = useState(defaultCompanyLabel);
   const [testMode, setTestMode] = useState(false);
   const [testEmails, setTestEmails] = useState<string[]>([]);
-  const [subject, setSubject] = useState("");
-  const [bodyText, setBodyText] = useState("");
+  const [subject, setSubject] = useState(() =>
+    defaultSubjectForCompany(defaultCompanyLabel)
+  );
+  const [bodyText, setBodyText] = useState(defaultBodyText);
   const [file, setFile] = useState<File | null>(null);
   const [savedResumes, setSavedResumes] = useState<UserResumeRow[]>([]);
   const [savedResumesLoading, setSavedResumesLoading] = useState(false);
@@ -294,23 +303,30 @@ export function OutreachForm() {
     };
   }, [applyLibraryResume, campaignFromUrl, resumeFromUrl]);
 
+  const prevCampaignFromUrl = useRef<string | null>(null);
+
   useEffect(() => {
     if (!campaignFromUrl) {
+      if (prevCampaignFromUrl.current) {
+        setCompany(defaultCompanyLabel);
+        setSubject(defaultSubjectForCompany(defaultCompanyLabel));
+        setBodyText(defaultBodyText);
+        setRecipients([]);
+        setTestMode(false);
+        setErr(false);
+        setMessage("");
+        setFile(null);
+        setSelectedSavedResumeId(null);
+      }
+      prevCampaignFromUrl.current = null;
       setLoadedCampaign(null);
       setCampaignLoadError(null);
       setCampaignLoading(false);
       setPendingCampaignResumePath(null);
-      setCompany("");
-      setSubject("");
-      setBodyText("");
-      setRecipients([]);
-      setTestMode(false);
-      setErr(false);
-      setMessage("");
-      setFile(null);
-      setSelectedSavedResumeId(null);
       return;
     }
+
+    prevCampaignFromUrl.current = campaignFromUrl;
 
     if (!isSupabaseConfigured()) {
       setCampaignLoadError("Sign in to load this campaign.");
@@ -474,9 +490,9 @@ export function OutreachForm() {
   const companyInvalid = err && !companyReady;
 
   const resetFormFields = useCallback(() => {
-    setCompany("");
-    setSubject("");
-    setBodyText("");
+    setCompany(defaultCompanyLabel);
+    setSubject(defaultSubjectForCompany(defaultCompanyLabel));
+    setBodyText(defaultBodyText);
     setFile(null);
     setSelectedSavedResumeId(null);
     setTestMode(false);
@@ -636,6 +652,16 @@ export function OutreachForm() {
         const payload = data as SendResponse | null;
 
         if (!payload?.ok) {
+          if (
+            dryRun &&
+            isNoRecruitersDiscoveryError(payload, text)
+          ) {
+            setRecipients([]);
+            setErr(false);
+            setErrorDetails(null);
+            setMessage(noRecruitersMessage(company));
+            return;
+          }
           setErr(true);
           setMessage(
             apiErrorMessage(
@@ -679,7 +705,7 @@ export function OutreachForm() {
           setSendSuccess(false);
           setMessage(
             nextRecipients.length === 0
-              ? "No recipients found."
+              ? noRecruitersMessage(company)
               : testMode
                 ? `${payload.count ?? nextRecipients.length} test recipient loaded.`
                 : `${payload.count ?? nextRecipients.length} recipients found.`
@@ -790,11 +816,16 @@ export function OutreachForm() {
             <CompanySelect
               value={company}
               onChange={(next) => {
+                setSubject((current) =>
+                  current === defaultSubjectForCompany(company) || !current.trim()
+                    ? defaultSubjectForCompany(next)
+                    : current
+                );
                 setCompany(next);
                 setRecipients([]);
               }}
               invalid={companyInvalid}
-              placeholder={placeholderCompany}
+              placeholder={defaultCompanyLabel}
             />
 
               <div className="relative">
@@ -802,7 +833,6 @@ export function OutreachForm() {
     id="subject"
     value={subject}
     onChange={(event) => setSubject(event.target.value)}
-    placeholder={placeholderSubject}
     className="h-10 rounded-xl text-sm font-medium"
   />
   <label
@@ -818,7 +848,6 @@ export function OutreachForm() {
     id="body"
     value={bodyText}
     onChange={(event) => setBodyText(event.target.value)}
-    placeholder={placeholderMessage}
     className="rounded-xl text-sm leading-relaxed"
     rows={6}
   />
@@ -829,6 +858,12 @@ export function OutreachForm() {
     Message
   </label>
 </div>
+<p className="text-xs leading-relaxed text-muted-foreground">
+  Use{" "}
+  <span className="font-mono text-[0.7rem]">{"{{first_name}}"}</span> and{" "}
+  <span className="font-mono text-[0.7rem]">{"{{company}}"}</span> in the
+  message.
+</p>
 
               <Field>
                 <FieldLabel
@@ -1606,6 +1641,27 @@ function recipientNameFromEmail(email?: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function noRecruitersMessage(company: string) {
+  const name = company.trim();
+  return name
+    ? `No recruiters found for ${name}.`
+    : "No recruiters found for that company.";
+}
+
+function isNoRecruitersDiscoveryError(
+  payload: SendResponse | null,
+  text: string
+) {
+  const message = `${payload?.error ?? ""} ${text}`.toLowerCase();
+  return (
+    payload?.code === "no_recruiters_found" ||
+    message.includes("hasn't returned any results") ||
+    message.includes("has not returned any results") ||
+    message.includes("no addresses inferred") ||
+    message.includes("serpapi returned nothing usable")
+  );
 }
 
 function resolveMergeFields(

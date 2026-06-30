@@ -495,10 +495,18 @@ def _run_send(
             )
 
         if not people:
+            if dry_run:
+                return {
+                    "ok": True,
+                    "dry_run": True,
+                    "count": 0,
+                    "recipients": [],
+                }
             return JSONResponse(
                 status_code=404,
                 content={
                     "ok": False,
+                    "code": "no_recruiters_found",
                     "error": (
                         "No addresses inferred from search "
                         "(SerpAPI returned nothing usable)."
