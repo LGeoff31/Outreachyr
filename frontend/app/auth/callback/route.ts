@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { serverBackendBaseUrl } from "@/lib/backendApi";
-import { loginErrorUrl, safeNextPath } from "@/lib/safeNextPath";
+import { loginErrorUrl, POST_LOGIN_COOKIE, resolvePostLoginPath } from "@/lib/safeNextPath";
 import { getSupabaseEnv } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -46,10 +46,18 @@ async function syncGmailSession({
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const next = safeNextPath(requestUrl.searchParams.get("next"));
+  const cookieStore = await cookies();
+  const next = resolvePostLoginPath(
+    cookieStore.get(POST_LOGIN_COOKIE)?.value,
+    requestUrl.searchParams.get("next")
+  );
   const redirectUrl = new URL(next, requestUrl.origin);
   const response = NextResponse.redirect(redirectUrl);
-  const cookieStore = await cookies();
+  response.cookies.set(POST_LOGIN_COOKIE, "", {
+    path: "/",
+    maxAge: 0,
+    sameSite: "lax",
+  });
 
   if (!code) {
     return NextResponse.redirect(

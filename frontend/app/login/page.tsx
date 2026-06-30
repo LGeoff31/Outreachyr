@@ -15,6 +15,10 @@ import {
 } from "@/components/ui/card";
 import { GOOGLE_OAUTH_SCOPES, safeNextPath } from "@/lib/auth";
 import {
+  DEFAULT_POST_LOGIN_PATH,
+  setPostLoginRedirectClient,
+} from "@/lib/safeNextPath";
+import {
   createClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
@@ -52,6 +56,12 @@ function LoginInner() {
   const supabaseConfigured = isSupabaseConfigured();
   const [checkingSession, setCheckingSession] = useState(supabaseConfigured);
   const [startingLogin, setStartingLogin] = useState(false);
+
+  useEffect(() => {
+    if (next !== DEFAULT_POST_LOGIN_PATH) {
+      setPostLoginRedirectClient(next);
+    }
+  }, [next]);
 
   useEffect(() => {
     if (!supabaseConfigured) return;
@@ -106,11 +116,12 @@ function LoginInner() {
   async function signInWithGoogle() {
     setStartingLogin(true);
     try {
+      setPostLoginRedirectClient(next);
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+          redirectTo: `${window.location.origin}/auth/callback`,
           scopes: GOOGLE_OAUTH_SCOPES,
           queryParams: {
             access_type: "offline",
