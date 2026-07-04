@@ -38,7 +38,7 @@ const DEMO_SUBJECT =
 
 const DEMO_BODY = `Hi {{first_name}},
 
-I'm Geoffrey Lee (Software Engineering, University of Waterloo, ex-Shopify).
+I'm Geoffrey Lee (Software Engineering, University of Waterloo).
 
 I saw {{company}} release Summer roles and was particularly interested in the Core Infrastructure team! 
 `;
