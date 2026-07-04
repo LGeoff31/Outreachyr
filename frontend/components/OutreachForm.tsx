@@ -258,32 +258,11 @@ export function OutreachForm() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const applyLibraryResume = useCallback(async (row: UserResumeRow) => {
-    setLibraryAttachLoading(true);
-    try {
-      const res = await fetch(
-        `/api/user-resumes/${encodeURIComponent(row.id)}/file`,
-        { headers: await resumeApiAuthHeaders() }
-      );
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-      const blob = await res.blob();
-      const safeName = `${row.display_name.replace(/[/\\]/g, "-")}.pdf`;
-      const nextFile = new File([blob], safeName, { type: "application/pdf" });
-      setFile(nextFile);
-      setSelectedSavedResumeId(row.id);
-      return true;
-    } catch {
-      setFile(null);
-      setSelectedSavedResumeId(null);
-      return false;
-    } finally {
-      setLibraryAttachLoading(false);
-    }
+  const selectLibraryResume = useCallback((row: UserResumeRow) => {
+    setFile(null);
+    setSelectedSavedResumeId(row.id);
+    return true;
   }, []);
-
   const applyCampaignResume = useCallback(
     async (campaignId: string, suggestedFilename: string) => {
       setLibraryAttachLoading(true);
@@ -329,7 +308,7 @@ export function OutreachForm() {
         setSavedResumes(rows);
         if (!campaignFromUrl && !resumeFromUrl) {
           const defaultRow = rows.find((r) => r.is_default);
-          if (defaultRow) await applyLibraryResume(defaultRow);
+          if (defaultRow) selectLibraryResume(defaultRow);
         }
       } finally {
         if (!cancelled) setSavedResumesLoading(false);
@@ -338,7 +317,7 @@ export function OutreachForm() {
     return () => {
       cancelled = true;
     };
-  }, [applyLibraryResume, campaignFromUrl, resumeFromUrl]);
+  }, [selectLibraryResume, campaignFromUrl, resumeFromUrl]);
 
   const prevCampaignFromUrl = useRef<string | null>(null);
 
@@ -435,10 +414,7 @@ export function OutreachForm() {
         (r) => r.resume_storage_path === pendingCampaignResumePath
       );
       if (row) {
-        const attached = await applyLibraryResume(row);
-        if (!cancelled && !attached) {
-          await applyCampaignResume(campaignFromUrl, `${safeCompany}-resume.pdf`);
-        }
+        selectLibraryResume(row);
       } else {
         await applyCampaignResume(campaignFromUrl, `${safeCompany}-resume.pdf`);
       }
@@ -454,7 +430,7 @@ export function OutreachForm() {
     savedResumesLoading,
     campaignFromUrl,
     loadedCampaign?.company,
-    applyLibraryResume,
+    selectLibraryResume,
     applyCampaignResume,
   ]);
 
@@ -480,13 +456,13 @@ export function OutreachForm() {
   useEffect(() => {
     if (!resumeFromUrl || campaignFromUrl || savedResumesLoading) return;
     const row = savedResumes.find((r) => r.id === resumeFromUrl);
-    if (row) void applyLibraryResume(row);
+    if (row) selectLibraryResume(row);
   }, [
     resumeFromUrl,
     campaignFromUrl,
     savedResumes,
     savedResumesLoading,
-    applyLibraryResume,
+    selectLibraryResume,
   ]);
 
   useEffect(() => {
@@ -537,6 +513,11 @@ export function OutreachForm() {
     [savedResumes, selectedSavedResumeId]
   );
 
+  const selectedResumeFileName = selectedSavedResume
+    ? selectedSavedResume.display_name.toLowerCase().endsWith(".pdf")
+      ? selectedSavedResume.display_name
+      : `${selectedSavedResume.display_name}.pdf`
+    : file?.name ?? null;
   const resetFormFields = useCallback(() => {
     setCompany(defaultCompanyLabel);
     setSubject(defaultSubjectForCompany(defaultCompanyLabel));
@@ -550,9 +531,9 @@ export function OutreachForm() {
 
     const defaultRow = savedResumes.find((r) => r.is_default);
     if (defaultRow) {
-      void applyLibraryResume(defaultRow);
+      selectLibraryResume(defaultRow);
     }
-  }, [applyLibraryResume, savedResumes]);
+  }, [selectLibraryResume, savedResumes]);
 
   const handleResumeUpload = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -567,14 +548,12 @@ export function OutreachForm() {
   );
 
   const handleUseSavedResume = useCallback(
-    async (row: UserResumeRow) => {
-      const attached = await applyLibraryResume(row);
-      if (attached) {
-        setResumeChooserOpen(false);
-        setResumeChooserQuery("");
-      }
+    (row: UserResumeRow) => {
+      selectLibraryResume(row);
+      setResumeChooserOpen(false);
+      setResumeChooserQuery("");
     },
-    [applyLibraryResume]
+    [selectLibraryResume]
   );
 
   const addTestEmail = useCallback((raw: string) => {
@@ -988,7 +967,7 @@ export function OutreachForm() {
                     />
                     Loading resume...
                   </div>
-                ) : file ? (
+                ) : file || selectedSavedResume ? (
                   <div className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-background p-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
                       <FileText aria-hidden="true" className="size-4" />
@@ -996,7 +975,9 @@ export function OutreachForm() {
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                         <p className="min-w-0 truncate text-sm font-medium text-foreground">
-                          {selectedSavedResume?.display_name ?? file.name}
+                          {selectedSavedResume?.display_name ??
+                            file?.name ??
+                            "Selected resume"}
                         </p>
                         {selectedSavedResume?.is_default ? (
                           <Badge
@@ -1072,7 +1053,7 @@ export function OutreachForm() {
             bodyText={bodyText}
             company={company}
             subject={subject}
-            resumeFileName={file?.name ?? null}
+            resumeFileName={selectedResumeFileName}
             resumePreviewUrl={resumePreviewUrl}
             testMode={testMode}
             onAddTestEmail={addTestEmail}
@@ -1280,7 +1261,7 @@ function ResumeChooserModal({
   query: string;
   onQueryChange: (value: string) => void;
   onClose: () => void;
-  onUseResume: (row: UserResumeRow) => Promise<void>;
+  onUseResume: (row: UserResumeRow) => void;
 }) {
   const orderedResumes = useMemo(
     () =>
@@ -1460,7 +1441,7 @@ function ResumeChooserModal({
             className="rounded-xl"
             disabled={!draftResume || attaching}
             onClick={() => {
-              if (draftResume) void onUseResume(draftResume);
+              if (draftResume) onUseResume(draftResume);
             }}
           >
             {attaching ? (
