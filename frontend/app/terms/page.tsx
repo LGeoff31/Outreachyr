@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     "Terms governing your use of Outreachyr recruiter outreach tools and related services.",
 };
 
-const LAST_UPDATED = "May 11, 2026";
+const LAST_UPDATED = "July 4, 2026";
 
 function contactEmail() {
   return (
@@ -28,7 +28,7 @@ export default function TermsOfServicePage() {
           ← Back to home
         </Link>
         {" · "}
-        <time dateTime="2026-05-11">Last updated {LAST_UPDATED}</time>
+        <time dateTime="2026-07-04">Last updated {LAST_UPDATED}</time>
       </p>
 
       <h1 className="mt-8 text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -142,7 +142,33 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          6. Intellectual property
+          6. Pricing and billing
+        </h2>
+        <p>
+          Outreachyr may offer free usage limits, one-time unlock fees,
+          subscriptions, or other paid features. Prices, free-tier limits, and
+          billing models shown in the product or on our website are for
+          convenience and may change at any time.
+        </p>
+        <p>
+          We may introduce new fees, change existing prices, run limited-time
+          promotions, or retire pricing plans. Changes apply to new purchases
+          and, where permitted by law, to renewals or continued use after notice.
+          If you already paid for a one-time unlock or similar entitlement at a
+          stated price, that purchase is generally honored for the access
+          described at the time of payment, unless these Terms say otherwise or
+          applicable law requires a different outcome.
+        </p>
+        <p>
+          Payments are processed by third-party providers (such as Stripe). Your
+          use of those services is subject to their terms. Taxes may apply
+          depending on your location.
+        </p>
+      </section>
+
+      <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
+        <h2 className="text-lg font-semibold text-foreground">
+          7. Intellectual property
         </h2>
         <p>
           We retain all rights in the Service, our branding, and our software.
@@ -153,7 +179,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          7. Disclaimers
+          8. Disclaimers
         </h2>
         <p>
           THE SERVICE IS PROVIDED “AS IS” AND “AS AVAILABLE.” TO THE MAXIMUM
@@ -167,7 +193,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          8. Limitation of liability
+          9. Limitation of liability
         </h2>
         <p>
           TO THE MAXIMUM EXTENT PERMITTED BY LAW, NEITHER WE NOR OUR SUPPLIERS
@@ -183,7 +209,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          9. Indemnity
+          10. Indemnity
         </h2>
         <p>
           You will defend, indemnify, and hold us harmless from any claims,
@@ -195,7 +221,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          10. Suspension and termination
+          11. Suspension and termination
         </h2>
         <p>
           We may suspend or terminate access to the Service for violation of
@@ -207,7 +233,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          11. Changes
+          12. Changes
         </h2>
         <p>
           We may modify the Service or these Terms. If a change is material, we
@@ -220,7 +246,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          12. Governing law and disputes
+          13. Governing law and disputes
         </h2>
         <p>
           These Terms are governed by the laws of the State of Delaware, USA,
@@ -237,7 +263,7 @@ export default function TermsOfServicePage() {
 
       <section className="mt-10 space-y-4 text-sm leading-7 text-muted-foreground">
         <h2 className="text-lg font-semibold text-foreground">
-          13. Contact
+          14. Contact
         </h2>
         <p>
           Questions about these Terms:{" "}

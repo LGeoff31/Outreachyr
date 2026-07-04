@@ -14,6 +14,9 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+const LIST_PRICE = 10;
+const SALE_PRICE = 5;
+
 const planFeatures = [
   "Unlimited campaigns after unlock",
   "Verified recruiter emails at any company",
@@ -78,8 +81,8 @@ export function PricingSection({
             id={headingId}
             className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl"
           >
-            3 <span className="text-primary">Free</span>  campaigns. Then{" "}
-            <span className="text-primary">$5</span> for unlimited.
+            3 <span className="text-primary">Free</span> campaigns. Then{" "}
+            <span className="text-primary">${SALE_PRICE}</span> for unlimited.
           </h2>
         ) : (
           <h1
@@ -87,7 +90,7 @@ export function PricingSection({
             className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl"
           >
             Three free campaigns. Then{" "}
-            <span className="text-primary">$5</span> for unlimited.
+            <span className="text-primary">${SALE_PRICE}</span> for unlimited.
           </h1>
         )}
       </div>
@@ -95,12 +98,22 @@ export function PricingSection({
       <div className="mx-auto mt-14 max-w-md">
         <Card className="rounded-2xl border-primary/20 bg-card py-0 shadow-lg shadow-primary/10 ring-1 ring-primary/15">
           <CardHeader className="gap-2 px-6 pt-6 pb-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="rounded-md bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary hover:bg-primary/10">
+                Limited time
+              </Badge>
+            </div>
             <CardTitle className="text-xl font-semibold">Full access</CardTitle>
             <CardDescription className="text-sm leading-6">
               Start with 3 campaigns free. Pay once when you&apos;re ready.
             </CardDescription>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-4xl font-semibold tracking-tight">$5</span>
+            <div className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-2xl font-medium text-muted-foreground line-through">
+                ${LIST_PRICE}
+              </span>
+              <span className="text-4xl font-semibold tracking-tight text-primary">
+                ${SALE_PRICE}
+              </span>
               <span className="text-sm text-muted-foreground">one-time</span>
             </div>
           </CardHeader>
@@ -121,7 +134,7 @@ export function PricingSection({
             </ul>
           </CardContent>
           <CardFooter className="flex flex-col gap-3 px-6 pb-6 pt-2">
-            <UnlockCampaignsButton />
+            <UnlockCampaignsButton label={`Unlock for $${SALE_PRICE}`} />
             <Link
               href="/dashboard/new"
               className={cn(
