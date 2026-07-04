@@ -455,7 +455,14 @@ def _send_campaign(
                 )
                 result = send_queue.kickoff_send_job(job_id)
                 queued = result["has_more"]
-                if queued and not _is_serverless():
+                if queued and _is_serverless():
+                    send_queue.process_send_queue(
+                        max_seconds=55.0,
+                        preferred_job_id=job_id,
+                    )
+                    refreshed = send_queue.read_job_status(job_id)
+                    queued = refreshed == "pending"
+                elif queued and not _is_serverless():
                     thread = threading.Thread(
                         target=_continue_send_job_in_background,
                         args=(job_id,),

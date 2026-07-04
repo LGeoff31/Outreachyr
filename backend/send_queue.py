@@ -352,6 +352,13 @@ def process_send_queue(
     }
 
 
+def read_job_status(job_id: uuid.UUID) -> str | None:
+    engine = make_engine()
+    with engine.connect() as conn:
+        job = _read_job(conn, job_id)
+    return job["status"] if job else None
+
+
 def kickoff_send_job(job_id: uuid.UUID) -> dict:
     """Send the first queued message and leave the rest for async processing."""
     engine = make_engine()
