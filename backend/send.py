@@ -305,9 +305,6 @@ def recipients() -> list[tuple[str, str]]:
     return out
 
 
-RESUME = Path(__file__).resolve().parent / "resume.pdf"
-
-
 def build_outreach_messages(
     people: list[tuple[str, str]],
     company: str | None,
@@ -349,7 +346,7 @@ def build_outreach_messages(
         msg["From"], msg["To"] = sender_email, email
         msg.set_content(merged_body)
 
-        if resume_bytes is not None:
+        if resume_bytes:
             fn = resume_filename or "attachment.pdf"
             sub = Path(fn).suffix.lower().lstrip(".") or "pdf"
             if sub == "pdf":
@@ -358,11 +355,6 @@ def build_outreach_messages(
                 main, t = "application", sub
             msg.add_attachment(
                 resume_bytes, maintype=main, subtype=t, filename=Path(fn).name
-            )
-        elif RESUME.is_file():
-            data = RESUME.read_bytes()
-            msg.add_attachment(
-                data, maintype="application", subtype="pdf", filename=RESUME.name
             )
         messages.append(msg)
     return messages

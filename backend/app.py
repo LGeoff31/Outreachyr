@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from email.message import EmailMessage
+from pathlib import Path
 
 from fastapi import Cookie, FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +20,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 import google_oauth as google_auth
 import send as outreach
+import send_queue
 import session_store
 from config import (
     frontend_base_url,
@@ -39,7 +42,7 @@ from supabase_jwt import verify_supabase_access_token as _verify_supabase_user
 from campaign_api import persist_sent_campaign, router as campaign_router
 from billing_api import router as billing_router
 from email_template_api import router as email_template_router
-from user_resume_api import router as user_resume_router, storage_upload_object
+from user_resume_api import router as user_resume_router, storage_download_object, storage_upload_object
 
 _app_init_done = False
 logger = logging.getLogger(__name__)
@@ -111,6 +114,38 @@ def _supabase_access_token_from_request(request: Request) -> str | None:
         token = auth.removeprefix("Bearer ").strip()
         return token or None
     return None
+
+
+def _resolve_resume_attachment_for_send(
+    request: Request,
+    *,
+    resume_bytes: bytes | None,
+    resume_filename: str,
+    resume_storage_path: str | None,
+) -> tuple[bytes | None, str]:
+    if resume_bytes:
+        return resume_bytes, resume_filename or "resume.pdf"
+
+    path = (resume_storage_path or "").strip()
+    if not path:
+        return None, resume_filename or "resume.pdf"
+
+    token = _supabase_access_token_from_request(request)
+    if not token:
+        logger.warning("Resume storage path provided but no Supabase token for download")
+        return None, resume_filename or "resume.pdf"
+
+    try:
+        data = storage_download_object(token, path)
+    except Exception:
+        logger.exception("Failed to load resume from storage for send: %s", path)
+        return None, resume_filename or "resume.pdf"
+
+    if not data:
+        return None, resume_filename or "resume.pdf"
+
+    name = Path(path).name or resume_filename or "resume.pdf"
+    return data, name
 
 
 def _resolve_campaign_resume_path(
@@ -295,25 +330,18 @@ def _gmail_api_error_response(exc: HttpError) -> JSONResponse:
     )
 
 
-def _send_remaining_in_background(
-    refresh_token: str,
-    sender_email: str,
-    messages: list[EmailMessage],
-) -> None:
+def _is_serverless() -> bool:
+    return os.environ.get("VERCEL", "").strip() == "1"
+
+
+def _continue_send_job_in_background(job_id: uuid.UUID) -> None:
     try:
-        creds = google_auth.credentials_from_refresh(refresh_token)
-        sent = send_messages_oauth(creds, messages, start_index=1)
-        logger.info(
-            "Background send finished for %s (%d remaining message(s))",
-            sender_email,
-            sent,
+        send_queue.process_send_queue(
+            max_seconds=3600.0,
+            preferred_job_id=job_id,
         )
     except Exception:
-        logger.exception(
-            "Background send failed for %s (%d remaining message(s))",
-            sender_email,
-            max(0, len(messages) - 1),
-        )
+        logger.exception("Background send queue failed for job %s", job_id)
 
 
 def _send_campaign(
@@ -382,39 +410,69 @@ def _send_campaign(
         sender = row["email"]
         queued = False
         try:
+            attachment_bytes, attachment_name = _resolve_resume_attachment_for_send(
+                request,
+                resume_bytes=resume_bytes,
+                resume_filename=resume_filename or "resume.pdf",
+                resume_storage_path=resume_storage_path,
+            )
             messages = outreach.build_outreach_messages(
                 people,
                 company,
                 sender_email=sender,
                 subject=subject,
                 body_text=body_opt,
-                resume_bytes=resume_bytes,
-                resume_filename=resume_filename or "resume.pdf",
+                resume_bytes=attachment_bytes,
+                resume_filename=attachment_name,
             )
             ensure_fresh_access_token(creds)
-            queued = len(messages) > 1
+            queued = False
+            owner_id = _owner_id_for_send(request, row)
             logger.info(
-                "Sending campaign for %s (%d recipient(s), test_mode=%s, queued=%s)",
+                "Sending campaign for %s (%d recipient(s), test_mode=%s, serverless=%s)",
                 sender,
                 len(people),
                 test_mode,
-                queued,
+                _is_serverless(),
             )
-            send_messages_oauth(creds, messages[:1])
-            logger.info("First message sent for %s", sender)
-            if queued:
-                thread = threading.Thread(
-                    target=_send_remaining_in_background,
-                    kwargs={
-                        "refresh_token": row["refresh_token"],
-                        "sender_email": sender,
-                        "messages": messages,
-                    },
-                    name=f"campaign-send-remaining-{sender}",
-                    daemon=False,
+            if len(messages) > 1:
+                if owner_id is None:
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "ok": False,
+                            "code": "auth_required",
+                            "error": "Sign in is required before sending a campaign.",
+                            "auth_required": True,
+                        },
+                    )
+                session_id = request.cookies.get("outreach_session", "").strip()
+                job_id = send_queue.create_send_job(
+                    owner_id=owner_id,
+                    session_id=session_id,
+                    sender_email=sender,
+                    messages=messages,
                 )
-                thread.start()
+                result = send_queue.kickoff_send_job(job_id)
+                queued = result["has_more"]
+                if queued and not _is_serverless():
+                    thread = threading.Thread(
+                        target=_continue_send_job_in_background,
+                        args=(job_id,),
+                        name=f"campaign-send-job-{job_id}",
+                        daemon=False,
+                    )
+                    thread.start()
+                logger.info(
+                    "Send job %s for %s started (status=%s, queued=%s, serverless=%s)",
+                    job_id,
+                    sender,
+                    result["status"],
+                    queued,
+                    _is_serverless(),
+                )
             else:
+                send_messages_oauth(creds, messages)
                 logger.info(
                     "Campaign send finished for %s (%d recipient(s))",
                     sender,
@@ -858,6 +916,23 @@ def api_send_json(request: Request, body: SendJsonRequest):
             body.resume_profile_school_normalized.strip() or None
         ),
     )
+
+
+@app.get("/api/internal/process-send-queue")
+def process_send_queue_endpoint(request: Request):
+    secret = os.environ.get("CRON_SECRET", "").strip()
+    if secret:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {secret}":
+            return JSONResponse(status_code=401, content={"ok": False, "error": "Unauthorized"})
+    try:
+        result = send_queue.process_send_queue(max_seconds=280.0)
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "error": str(exc)},
+        )
+    return {"ok": True, **result}
 
 
 @app.get("/health")

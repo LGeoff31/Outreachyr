@@ -39,6 +39,23 @@ def _sleep_random(min_sec: float, max_sec: float) -> None:
     time.sleep(random.uniform(lo, hi))
 
 
+def delay_ranges() -> dict[str, tuple[float, float]]:
+    return {
+        "initial": _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 0.0, 0.0),
+        "spacing": _delay_range("GMAIL_SEND_SPACING_SEC", 22.0, 48.0),
+        "chunk_pause": _delay_range("GMAIL_SEND_CHUNK_PAUSE_SEC", 50.0, 100.0),
+    }
+
+
+def send_single_message(creds: Credentials, msg: EmailMessage) -> None:
+    creds = ensure_fresh_access_token(creds)
+    service = build(
+        "gmail", "v1", credentials=creds, cache_discovery=False
+    )
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    service.users().messages().send(userId="me", body={"raw": raw}).execute()
+
+
 def send_messages_oauth(
     creds: Credentials,
     messages: list[EmailMessage],
@@ -48,16 +65,10 @@ def send_messages_oauth(
     if not messages or start_index >= len(messages):
         return 0
 
-    creds = ensure_fresh_access_token(creds)
-    service = build(
-        "gmail", "v1", credentials=creds, cache_discovery=False
-    )
-
-    initial_min, initial_max = _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 0.0, 0.0)
-    spacing_min, spacing_max = _delay_range("GMAIL_SEND_SPACING_SEC", 22.0, 48.0)
-    chunk_pause_min, chunk_pause_max = _delay_range(
-        "GMAIL_SEND_CHUNK_PAUSE_SEC", 50.0, 100.0
-    )
+    delays = delay_ranges()
+    initial_min, initial_max = delays["initial"]
+    spacing_min, spacing_max = delays["spacing"]
+    chunk_pause_min, chunk_pause_max = delays["chunk_pause"]
 
     if start_index == 0:
         _sleep_random(initial_min, initial_max)
@@ -69,8 +80,7 @@ def send_messages_oauth(
     for index, msg in enumerate(messages):
         if index < start_index:
             continue
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        send_single_message(creds, msg)
         sent_in_chunk += 1
         sent_count += 1
 
