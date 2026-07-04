@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -137,6 +144,8 @@ export function OutreachForm() {
     string | null
   >(null);
   const [libraryAttachLoading, setLibraryAttachLoading] = useState(false);
+  const [resumeChooserOpen, setResumeChooserOpen] = useState(false);
+  const [resumeChooserQuery, setResumeChooserQuery] = useState("");
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientToRemove, setRecipientToRemove] =
     useState<RecipientRemovalTarget | null>(null);
@@ -179,6 +188,20 @@ export function OutreachForm() {
   useEffect(() => {
     void syncGmailSendSession();
   }, []);
+
+  useEffect(() => {
+    if (!resumeChooserOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setResumeChooserOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [resumeChooserOpen]);
 
   useEffect(() => {
     if (celebrateSend === 0) return;
@@ -505,6 +528,14 @@ export function OutreachForm() {
               : "Fetch recruiters first."
             : undefined;
   const companyInvalid = err && !companyReady;
+  const selectedSavedResume = useMemo(
+    () =>
+      selectedSavedResumeId
+        ? savedResumes.find((resume) => resume.id === selectedSavedResumeId) ??
+          null
+        : null,
+    [savedResumes, selectedSavedResumeId]
+  );
 
   const resetFormFields = useCallback(() => {
     setCompany(defaultCompanyLabel);
@@ -522,6 +553,29 @@ export function OutreachForm() {
       void applyLibraryResume(defaultRow);
     }
   }, [applyLibraryResume, savedResumes]);
+
+  const handleResumeUpload = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextFile = event.target.files?.[0] ?? null;
+      if (!nextFile) return;
+      setSelectedSavedResumeId(null);
+      setFile(nextFile);
+      setResumeChooserOpen(false);
+      event.currentTarget.value = "";
+    },
+    []
+  );
+
+  const handleUseSavedResume = useCallback(
+    async (row: UserResumeRow) => {
+      const attached = await applyLibraryResume(row);
+      if (attached) {
+        setResumeChooserOpen(false);
+        setResumeChooserQuery("");
+      }
+    },
+    [applyLibraryResume]
+  );
 
   const addTestEmail = useCallback((raw: string) => {
     const email = raw.trim().toLowerCase();
@@ -919,13 +973,20 @@ export function OutreachForm() {
                 >
                   Resume <span className="font-normal">(optional)</span>
                 </FieldLabel>
+                <Input
+                  id="resume"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  onChange={handleResumeUpload}
+                />
                 {libraryAttachLoading ? (
                   <div className="mt-2 flex min-h-14 items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
                     <Loader2
                       className="size-4 shrink-0 animate-spin"
                       aria-hidden="true"
                     />
-                    Loading resume…
+                    Loading resume...
                   </div>
                 ) : file ? (
                   <div className="mt-2 flex items-center gap-3 rounded-xl border border-border bg-background p-3">
@@ -933,13 +994,32 @@ export function OutreachForm() {
                       <FileText aria-hidden="true" className="size-4" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {file.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {Math.max(1, Math.round(file.size / 1024))} KB
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <p className="min-w-0 truncate text-sm font-medium text-foreground">
+                          {selectedSavedResume?.display_name ?? file.name}
+                        </p>
+                        {selectedSavedResume?.is_default ? (
+                          <Badge
+                            variant="secondary"
+                            className="h-5 text-[0.68rem]"
+                          >
+                            Default
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatResumeFileSize(file.size)}
                       </p>
                     </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={() => setResumeChooserOpen(true)}
+                    >
+                      Change
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"
@@ -954,28 +1034,37 @@ export function OutreachForm() {
                     </Button>
                   </div>
                 ) : (
-                  <label
-                    htmlFor="resume"
-                    className="mt-2 flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-sm transition hover:border-primary/40 hover:bg-accent"
-                  >
-                    <Input
-                      id="resume"
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      className="sr-only"
-                      onChange={(event) => {
-                        setSelectedSavedResumeId(null);
-                        setFile(event.target.files?.[0] ?? null);
-                      }}
-                    />
-                    <Upload
-                      aria-hidden="true"
-                      className="size-4 text-primary"
-                    />
-                    <span className="font-medium text-foreground">
-                      Upload PDF
-                    </span>
-                  </label>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <label
+                      htmlFor="resume"
+                      className="flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-sm transition hover:border-primary/40 hover:bg-accent"
+                    >
+                      <Upload
+                        aria-hidden="true"
+                        className="size-4 text-primary"
+                      />
+                      <span className="font-medium text-foreground">
+                        Upload PDF
+                      </span>
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-14 rounded-xl px-4"
+                      onClick={() => setResumeChooserOpen(true)}
+                    >
+                      {savedResumesLoading ? (
+                        <Loader2
+                          data-icon="inline-start"
+                          aria-hidden="true"
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <Search data-icon="inline-start" aria-hidden="true" />
+                      )}
+                      Use existing
+                    </Button>
+                  </div>
                 )}
               </Field>
             </CardContent>
@@ -1138,6 +1227,19 @@ export function OutreachForm() {
         </div>
       ) : null}
 
+      {resumeChooserOpen ? (
+        <ResumeChooserModal
+          resumes={savedResumes}
+          selectedResumeId={selectedSavedResumeId}
+          loading={savedResumesLoading}
+          attaching={libraryAttachLoading}
+          query={resumeChooserQuery}
+          onQueryChange={setResumeChooserQuery}
+          onClose={() => setResumeChooserOpen(false)}
+          onUseResume={handleUseSavedResume}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={Boolean(recipientToRemove)}
         title="Remove recipient?"
@@ -1153,6 +1255,239 @@ export function OutreachForm() {
         onConfirm={confirmRemoveRecipient}
       />
     </form>
+  );
+}
+
+function formatResumeFileSize(bytes: number | null | undefined) {
+  if (bytes == null || !Number.isFinite(bytes)) return "PDF";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatResumeUpdatedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Updated recently";
+  return `Updated ${date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })}`;
+}
+
+function ResumeChooserModal({
+  resumes,
+  selectedResumeId,
+  loading,
+  attaching,
+  query,
+  onQueryChange,
+  onClose,
+  onUseResume,
+}: {
+  resumes: UserResumeRow[];
+  selectedResumeId: string | null;
+  loading: boolean;
+  attaching: boolean;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onClose: () => void;
+  onUseResume: (row: UserResumeRow) => Promise<void>;
+}) {
+  const orderedResumes = useMemo(
+    () =>
+      [...resumes].sort(
+        (a, b) =>
+          Number(b.is_default) - Number(a.is_default) ||
+          b.updated_at.localeCompare(a.updated_at)
+      ),
+    [resumes]
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleResumes = useMemo(
+    () =>
+      normalizedQuery
+        ? orderedResumes.filter((resume) =>
+            resume.display_name.toLowerCase().includes(normalizedQuery)
+          )
+        : orderedResumes,
+    [normalizedQuery, orderedResumes]
+  );
+  const fallbackResumeId = orderedResumes[0]?.id ?? null;
+  const [draftResumeId, setDraftResumeId] = useState<string | null>(
+    selectedResumeId ?? fallbackResumeId
+  );
+
+  useEffect(() => {
+    setDraftResumeId(selectedResumeId ?? fallbackResumeId);
+  }, [fallbackResumeId, selectedResumeId]);
+
+  const draftResume =
+    orderedResumes.find((resume) => resume.id === draftResumeId) ?? null;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center p-3 sm:items-center sm:p-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close resume chooser"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="resume-chooser-title"
+        className="relative z-10 flex max-h-[min(40rem,calc(100vh-1.5rem))] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <h2
+              id="resume-chooser-title"
+              className="text-base font-semibold text-foreground"
+            >
+              Choose resume
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pick a saved resume for this campaign.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </div>
+
+        <div className="border-b border-border px-5 py-4">
+          <label className="relative block min-w-0 flex-1">
+            <span className="sr-only">Search resumes</span>
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Search resumes..."
+              className="h-10 rounded-xl bg-background pl-10 text-sm"
+            />
+          </label>
+
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Loading resumes...
+            </div>
+          ) : visibleResumes.length > 0 ? (
+            <div className="space-y-2">
+              {visibleResumes.map((resume) => {
+                const selected = resume.id === draftResumeId;
+                return (
+                  <button
+                    key={resume.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setDraftResumeId(resume.id)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-xl border bg-background p-3 text-left transition hover:bg-muted/40",
+                      selected
+                        ? "border-primary/50 ring-2 ring-primary/15"
+                        : "border-border"
+                    )}
+                  >
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground">
+                      <FileText aria-hidden="true" className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {resume.display_name}
+                        </span>
+                        {resume.is_default ? (
+                          <Badge
+                            variant="secondary"
+                            className="h-5 text-[0.68rem]"
+                          >
+                            Default
+                          </Badge>
+                        ) : null}
+                      </span>
+                      <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span>{formatResumeFileSize(resume.byte_size)}</span>
+                        <span>{formatResumeUpdatedAt(resume.updated_at)}</span>
+                        {resume.used_in_campaigns > 0 ? (
+                          <span>
+                            Used in {resume.used_in_campaigns} campaign
+                            {resume.used_in_campaigns === 1 ? "" : "s"}
+                          </span>
+                        ) : null}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        buttonVariants({
+                          variant: selected ? "secondary" : "outline",
+                          size: "sm",
+                        }),
+                        "rounded-xl"
+                      )}
+                      aria-hidden="true"
+                    >
+                      {selected ? "Selected" : "Use"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
+              <FileText className="size-5 text-muted-foreground" aria-hidden />
+              <p className="mt-3 text-sm font-medium text-foreground">
+                No saved resumes
+              </p>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                Upload a PDF from the resume field, or add reusable resumes from the resumes page.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-xl"
+            disabled={attaching}
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="rounded-xl"
+            disabled={!draftResume || attaching}
+            onClick={() => {
+              if (draftResume) void onUseResume(draftResume);
+            }}
+          >
+            {attaching ? (
+              <Loader2
+                data-icon="inline-start"
+                className="animate-spin"
+                aria-hidden="true"
+              />
+            ) : null}
+            Use selected
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
