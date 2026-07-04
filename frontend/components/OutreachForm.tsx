@@ -186,10 +186,6 @@ export function OutreachForm() {
   }, []);
 
   useEffect(() => {
-    void syncGmailSendSession();
-  }, []);
-
-  useEffect(() => {
     if (!resumeChooserOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
