@@ -28,6 +28,17 @@ export type UserResumeProfilePatch = {
   links: string[];
 };
 
+export type UserResumeSummaryProfile = Pick<
+  UserResumeProfile,
+  | "parse_status"
+  | "parse_error"
+  | "primary_school_name"
+  | "primary_school_normalized"
+  | "primary_major"
+  | "grad_year"
+  | "user_confirmed_at"
+>;
+
 export type UserResumeRow = {
   id: string;
   owner_id: string;
@@ -44,6 +55,9 @@ export type UserResumeRow = {
   profile?: UserResumeProfile;
 };
 
+export type UserResumeSummaryRow = Omit<UserResumeRow, "profile"> & {
+  profile?: UserResumeSummaryProfile;
+};
 /** Bearer headers for `/api/user-resumes/*` (exported for preview download). */
 export async function resumeApiAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
@@ -81,6 +95,30 @@ export async function fetchUserResumeRows(): Promise<{
   }
 }
 
+export async function fetchUserResumeSummaryRows(): Promise<{
+  rows: UserResumeSummaryRow[];
+  error: Error | null;
+}> {
+  try {
+    const res = await fetch("/api/user-resumes?view=summary", {
+      headers: await resumeApiAuthHeaders(),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return {
+        rows: [],
+        error: new Error(text || `${res.status} ${res.statusText}`),
+      };
+    }
+    const data = (await res.json()) as { rows: UserResumeSummaryRow[] };
+    return { rows: data.rows ?? [], error: null };
+  } catch (e) {
+    return {
+      rows: [],
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
 export async function uploadUserResumePdf(
   file: File
 ): Promise<{ row: UserResumeRow | null; error: Error | null }> {

@@ -16,6 +16,7 @@ from user_resume_api import (
     _build_resume_profile_row,
     _parse_resume_profile_background,
     _row_json,
+    _row_summary_json,
     retry_user_resume_profile_parse,
     upload_user_resume,
 )
@@ -44,6 +45,41 @@ class UserResumeApiProfileTests(unittest.TestCase):
 
         self.assertNotIn("profile", payload)
 
+    def test_row_summary_json_keeps_compose_fields_without_profile_children(self) -> None:
+        confirmed_at = datetime(2026, 1, 3, tzinfo=timezone.utc)
+        profile = types.SimpleNamespace(
+            parse_status="ready",
+            parse_error=None,
+            primary_school_name="University of Waterloo",
+            primary_school_normalized="university of waterloo",
+            primary_major="Computer Science",
+            grad_year=2027,
+            skills=[types.SimpleNamespace(position=0, name="Python")],
+            education=[types.SimpleNamespace(position=0, school="Waterloo")],
+            experience=[types.SimpleNamespace(position=0, title="Intern")],
+            projects=[types.SimpleNamespace(position=0, name="Tool")],
+            links=[types.SimpleNamespace(position=0, url="https://example.com")],
+            user_confirmed_at=confirmed_at,
+        )
+
+        payload = _row_summary_json(self._resume_row(profile=profile))
+
+        self.assertEqual(payload["display_name"], "Backend Resume")
+        self.assertEqual(payload["resume_storage_path"], "owner/resume.pdf")
+        self.assertEqual(payload["profile"]["parse_status"], "ready")
+        self.assertEqual(
+            payload["profile"]["primary_school_normalized"],
+            "university of waterloo",
+        )
+        self.assertEqual(
+            payload["profile"]["user_confirmed_at"],
+            "2026-01-03T00:00:00+00:00",
+        )
+        self.assertNotIn("skills", payload["profile"])
+        self.assertNotIn("education", payload["profile"])
+        self.assertNotIn("experience", payload["profile"])
+        self.assertNotIn("projects", payload["profile"])
+        self.assertNotIn("links", payload["profile"])
     def test_row_json_includes_ready_resume_profile_from_child_rows(self) -> None:
         confirmed_at = datetime(2026, 1, 3, tzinfo=timezone.utc)
         profile = types.SimpleNamespace(

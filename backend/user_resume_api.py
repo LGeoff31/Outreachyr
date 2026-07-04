@@ -324,8 +324,8 @@ def _profile_json(profile: ResumeProfile) -> dict[str, Any]:
     }
 
 
-def _row_json(r: UserResume) -> dict[str, Any]:
-    payload = {
+def _row_base_json(r: UserResume) -> dict[str, Any]:
+    return {
         "id": str(r.id),
         "owner_id": str(r.owner_id),
         "resume_storage_path": r.resume_storage_path,
@@ -339,11 +339,41 @@ def _row_json(r: UserResume) -> dict[str, Any]:
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
     }
+
+
+def _profile_summary_json(profile: ResumeProfile) -> dict[str, Any]:
+    return {
+        "parse_status": profile.parse_status,
+        "parse_error": getattr(profile, "parse_error", None),
+        "primary_school_name": profile.primary_school_name,
+        "primary_school_normalized": profile.primary_school_normalized,
+        "primary_major": profile.primary_major,
+        "grad_year": profile.grad_year,
+        "user_confirmed_at": (
+            profile.user_confirmed_at.isoformat()
+            if getattr(profile, "user_confirmed_at", None)
+            else None
+        ),
+    }
+
+
+def _row_summary_json(r: UserResume) -> dict[str, Any]:
+    payload = _row_base_json(r)
+    profile = getattr(r, "profile", None)
+    if profile is not None:
+        payload["profile"] = _profile_summary_json(profile)
+    return payload
+
+
+def _row_json(r: UserResume) -> dict[str, Any]:
+    payload = _row_base_json(r)
     profile = getattr(r, "profile", None)
     if profile is not None:
         payload["profile"] = _profile_json(profile)
     return payload
 
+def _resume_summary_load_options():
+    return (selectinload(UserResume.profile),)
 
 def _resume_profile_load_options():
     profile_load = selectinload(UserResume.profile)
@@ -600,20 +630,25 @@ def _parse_resume_profile_background(resume_id: uuid.UUID, data: bytes) -> None:
 def list_user_resumes(
     user: Annotated[dict, Depends(require_supabase_user)],
     session: Annotated[Session, Depends(get_db_session)],
+    view: str = "",
 ):
     uid = uuid.UUID(user["id"])
+    summary = view.strip().lower() == "summary"
+    load_options = (
+        _resume_summary_load_options() if summary else _resume_profile_load_options()
+    )
     rows = (
         session.execute(
             select(UserResume)
-            .options(*_resume_profile_load_options())
+            .options(*load_options)
             .where(UserResume.owner_id == uid)
             .order_by(UserResume.updated_at.desc())
         )
         .scalars()
         .all()
     )
-    return {"rows": [_row_json(r) for r in rows]}
-
+    serializer = _row_summary_json if summary else _row_json
+    return {"rows": [serializer(r) for r in rows]}
 
 @router.post("/user-resumes")
 async def upload_user_resume(

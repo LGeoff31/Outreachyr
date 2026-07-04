@@ -79,9 +79,9 @@ import {
 } from "@/lib/supabase/campaigns";
 import { fetchEmailTemplateRows } from "@/lib/supabase/emailTemplates";
 import {
-  fetchUserResumeRows,
+  fetchUserResumeSummaryRows,
   resumeApiAuthHeaders,
-  type UserResumeRow,
+  type UserResumeSummaryRow,
 } from "@/lib/supabase/userResumes";
 
 type Recipient = {
@@ -138,7 +138,7 @@ export function OutreachForm() {
   );
   const [bodyText, setBodyText] = useState(defaultBodyText);
   const [file, setFile] = useState<File | null>(null);
-  const [savedResumes, setSavedResumes] = useState<UserResumeRow[]>([]);
+  const [savedResumes, setSavedResumes] = useState<UserResumeSummaryRow[]>([]);
   const [savedResumesLoading, setSavedResumesLoading] = useState(false);
   const [selectedSavedResumeId, setSelectedSavedResumeId] = useState<
     string | null
@@ -258,7 +258,7 @@ export function OutreachForm() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const applyLibraryResume = useCallback(async (row: UserResumeRow) => {
+  const applyLibraryResume = useCallback(async (row: UserResumeSummaryRow) => {
     setLibraryAttachLoading(true);
     try {
       const res = await fetch(
@@ -320,7 +320,7 @@ export function OutreachForm() {
     (async () => {
       setSavedResumesLoading(true);
       try {
-        const { rows, error } = await fetchUserResumeRows();
+        const { rows, error } = await fetchUserResumeSummaryRows();
         if (cancelled) return;
         if (error) {
           setSavedResumes([]);
@@ -567,7 +567,7 @@ export function OutreachForm() {
   );
 
   const handleUseSavedResume = useCallback(
-    async (row: UserResumeRow) => {
+    async (row: UserResumeSummaryRow) => {
       const attached = await applyLibraryResume(row);
       if (attached) {
         setResumeChooserOpen(false);
@@ -1273,14 +1273,14 @@ function ResumeChooserModal({
   onClose,
   onUseResume,
 }: {
-  resumes: UserResumeRow[];
+  resumes: UserResumeSummaryRow[];
   selectedResumeId: string | null;
   loading: boolean;
   attaching: boolean;
   query: string;
   onQueryChange: (value: string) => void;
   onClose: () => void;
-  onUseResume: (row: UserResumeRow) => Promise<void>;
+  onUseResume: (row: UserResumeSummaryRow) => Promise<void>;
 }) {
   const orderedResumes = useMemo(
     () =>
