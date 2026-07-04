@@ -1007,9 +1007,6 @@ export function OutreachForm() {
                           </Badge>
                         ) : null}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatResumeFileSize(file.size)}
-                      </p>
                     </div>
                     <Button
                       type="button"
@@ -1257,14 +1254,6 @@ export function OutreachForm() {
     </form>
   );
 }
-
-function formatResumeFileSize(bytes: number | null | undefined) {
-  if (bytes == null || !Number.isFinite(bytes)) return "PDF";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatResumeUpdatedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Updated recently";
@@ -1375,7 +1364,6 @@ function ResumeChooserModal({
               className="h-10 rounded-xl bg-background pl-10 text-sm"
             />
           </label>
-
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -1419,7 +1407,6 @@ function ResumeChooserModal({
                         ) : null}
                       </span>
                       <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <span>{formatResumeFileSize(resume.byte_size)}</span>
                         <span>{formatResumeUpdatedAt(resume.updated_at)}</span>
                         {resume.used_in_campaigns > 0 ? (
                           <span>
