@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle2, HelpCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -129,92 +130,95 @@ export function SendFeedbackButton({
       </button>
     );
 
+  const dialog = (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center p-4 sm:items-center">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-black/50"
+        aria-label="Close feedback form"
+        disabled={sending}
+        onClick={() => setOpen(false)}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="feedback-dialog-title"
+        className="relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+      >
+        <div className="border-b border-border px-5 py-4">
+          <h2
+            id="feedback-dialog-title"
+            className="text-lg font-semibold text-foreground"
+          >
+            Send feedback
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Share a bug, idea, or anything else. We read each one.
+          </p>
+        </div>
+        <div className="space-y-3 px-5 py-4">
+          {sent ? (
+            <p className="flex items-center gap-2 text-sm font-medium text-[hsl(var(--chart-2))]">
+              <CheckCircle2 aria-hidden className="size-4" />
+              Thanks, feedback sent.
+            </p>
+          ) : (
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Message</span>
+              <AutosizeTextarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="What's on your mind?"
+                className="rounded-xl text-sm leading-relaxed"
+                autoFocus
+                disabled={sending}
+              />
+            </label>
+          )}
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        {!sent ? (
+          <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              disabled={sending}
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="rounded-xl"
+              disabled={!message.trim() || sending}
+              onClick={() => void handleSend()}
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Sending…
+                </>
+              ) : (
+                "Send feedback"
+              )}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
   return (
     <>
       {trigger}
-
-      {open ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center p-4 sm:items-center">
-          <button
-            type="button"
-            className="absolute inset-0 border-0 bg-black/50"
-            aria-label="Close feedback form"
-            disabled={sending}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="feedback-dialog-title"
-            className="relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
-          >
-            <div className="border-b border-border px-5 py-4">
-              <h2
-                id="feedback-dialog-title"
-                className="text-lg font-semibold text-foreground"
-              >
-                Send feedback
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Share a bug, idea, or anything else. We read each one.
-              </p>
-            </div>
-            <div className="space-y-3 px-5 py-4">
-              {sent ? (
-                <p className="flex items-center gap-2 text-sm font-medium text-[hsl(var(--chart-2))]">
-                  <CheckCircle2 aria-hidden className="size-4" />
-                  Thanks, feedback sent.
-                </p>
-              ) : (
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium">Message</span>
-                  <AutosizeTextarea
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                    placeholder="What's on your mind?"
-                    className="rounded-xl text-sm leading-relaxed"
-                    autoFocus
-                    disabled={sending}
-                  />
-                </label>
-              )}
-              {error ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {error}
-                </p>
-              ) : null}
-            </div>
-            {!sent ? (
-              <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-xl"
-                  disabled={sending}
-                  onClick={() => setOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  className="rounded-xl"
-                  disabled={!message.trim() || sending}
-                  onClick={() => void handleSend()}
-                >
-                  {sending ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" aria-hidden />
-                      Sending…
-                    </>
-                  ) : (
-                    "Send feedback"
-                  )}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(dialog, document.body)
+        : null}
     </>
   );
 }
