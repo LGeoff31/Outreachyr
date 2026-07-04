@@ -173,6 +173,12 @@ export async function diagnoseGmailSendFailure(input: {
     );
   }
 
+  if (input.sendData?.code === "gmail_send_scope_missing") {
+    parts.push(
+      "Sign out, revoke Outreachyr at myaccount.google.com/permissions if needed, then sign in again and allow Gmail send access."
+    );
+  }
+
   if (!input.sendData && input.sendText) {
     parts.push(input.sendText.replace(/\s+/g, " ").trim().slice(0, 180));
   }

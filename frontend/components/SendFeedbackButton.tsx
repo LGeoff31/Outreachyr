@@ -163,7 +163,7 @@ export function SendFeedbackButton({
               {sent ? (
                 <p className="flex items-center gap-2 text-sm font-medium text-[hsl(var(--chart-2))]">
                   <CheckCircle2 aria-hidden className="size-4" />
-                  Thanks — feedback sent.
+                  Thanks, feedback sent.
                 </p>
               ) : (
                 <label className="block space-y-2">

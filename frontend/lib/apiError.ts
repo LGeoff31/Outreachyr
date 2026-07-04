@@ -27,6 +27,30 @@ export function apiErrorMessage(
   return data?.error?.trim() || text.trim() || fallback;
 }
 
+/** Next.js rewrite failed before the FastAPI handler returned JSON (backend down, reset, etc.). */
+export function isBackendProxyFailure(
+  status: number,
+  data: ApiErrorBody | null,
+  text: string
+): boolean {
+  if (data?.ok === false && (data.error || data.code)) return false;
+  if (status < 500) return false;
+  const normalized = text.toLowerCase();
+  return (
+    !data ||
+    normalized.includes("internal server error") ||
+    normalized.includes("bad gateway") ||
+    normalized.includes("service unavailable")
+  );
+}
+
+export function backendUnreachableMessage(): string {
+  return (
+    "The outreach API at http://127.0.0.1:5050 did not respond. " +
+    "In a separate terminal run: cd backend && uv run python3 app.py"
+  );
+}
+
 export function formatApiDiagnostics(input: {
   status: number;
   data: ApiErrorBody | null;

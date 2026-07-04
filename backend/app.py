@@ -255,27 +255,64 @@ def _billing_status_for_owner(
         )
 
 
-def _send_campaign_in_background(
+GMAIL_SEND_SCOPE_ERROR = (
+    "Gmail send permission was not granted. Sign out, then sign in again and "
+    "check the box allowing Outreachyr to send email on your behalf."
+)
+GMAIL_SEND_SCOPE_DETAIL = (
+    "If you previously skipped that permission, revoke Outreachyr at "
+    "myaccount.google.com/permissions first, then sign in again."
+)
+
+
+def _gmail_api_error_response(exc: HttpError) -> JSONResponse:
+    detail = ""
+    try:
+        detail = exc.content.decode(errors="replace") if exc.content else str(exc)
+    except Exception:
+        detail = str(exc)
+
+    detail_lower = detail.lower()
+    if exc.resp.status == 403 and (
+        "insufficient authentication scopes" in detail_lower
+        or "insufficientpermission" in detail_lower
+        or "insufficient permission" in detail_lower
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "ok": False,
+                "code": "gmail_send_scope_missing",
+                "error": GMAIL_SEND_SCOPE_ERROR,
+                "detail": GMAIL_SEND_SCOPE_DETAIL,
+                "auth_required": True,
+            },
+        )
+
+    return JSONResponse(
+        status_code=502,
+        content={"ok": False, "error": f"Gmail API error: {detail}"},
+    )
+
+
+def _send_remaining_in_background(
     refresh_token: str,
     sender_email: str,
     messages: list[EmailMessage],
-    *,
-    people: list[tuple[str, str]],
-    company: str,
-    subject: str,
-    body_text: str,
-    owner_id: uuid.UUID | None,
-    resume_storage_path: str | None,
-    test_mode: bool = False,
 ) -> None:
     try:
         creds = google_auth.credentials_from_refresh(refresh_token)
-        send_messages_oauth(creds, messages)
+        sent = send_messages_oauth(creds, messages, start_index=1)
+        logger.info(
+            "Background send finished for %s (%d remaining message(s))",
+            sender_email,
+            sent,
+        )
     except Exception:
         logger.exception(
-            "Background campaign send failed for %s (%d messages)",
+            "Background send failed for %s (%d remaining message(s))",
             sender_email,
-            len(messages),
+            max(0, len(messages) - 1),
         )
 
 
@@ -343,6 +380,7 @@ def _send_campaign(
             )
         creds = google_auth.credentials_from_refresh(row["refresh_token"])
         sender = row["email"]
+        queued = False
         try:
             messages = outreach.build_outreach_messages(
                 people,
@@ -354,6 +392,34 @@ def _send_campaign(
                 resume_filename=resume_filename or "resume.pdf",
             )
             ensure_fresh_access_token(creds)
+            queued = len(messages) > 1
+            logger.info(
+                "Sending campaign for %s (%d recipient(s), test_mode=%s, queued=%s)",
+                sender,
+                len(people),
+                test_mode,
+                queued,
+            )
+            send_messages_oauth(creds, messages[:1])
+            logger.info("First message sent for %s", sender)
+            if queued:
+                thread = threading.Thread(
+                    target=_send_remaining_in_background,
+                    kwargs={
+                        "refresh_token": row["refresh_token"],
+                        "sender_email": sender,
+                        "messages": messages,
+                    },
+                    name=f"campaign-send-remaining-{sender}",
+                    daemon=False,
+                )
+                thread.start()
+            else:
+                logger.info(
+                    "Campaign send finished for %s (%d recipient(s))",
+                    sender,
+                    len(people),
+                )
         except RefreshError as e:
             err_text = str(e)
             detail = "Reconnect Gmail by signing out and signing in again."
@@ -380,18 +446,16 @@ def _send_campaign(
                 },
             )
         except HttpError as e:
-            detail = ""
-            try:
-                detail = e.content.decode(errors="replace") if e.content else str(e)
-            except Exception:
-                detail = str(e)
-            return JSONResponse(
-                status_code=502,
-                content={"ok": False, "error": f"Gmail API error: {detail}"},
-            )
+            return _gmail_api_error_response(e)
         except OSError as e:
             return JSONResponse(
                 status_code=500,
+                content={"ok": False, "error": f"Send failed: {e}"},
+            )
+        except Exception as e:
+            logger.exception("Campaign send failed for %s", sender)
+            return JSONResponse(
+                status_code=502,
                 content={"ok": False, "error": f"Send failed: {e}"},
             )
         owner_id = _owner_id_for_send(request, row)
@@ -414,30 +478,18 @@ def _send_campaign(
                 people=people,
                 resume_storage_path=path_clean,
             )
-            billing_status = _billing_status_for_owner(request, owner_id)
+            try:
+                billing_status = _billing_status_for_owner(request, owner_id)
+            except (OperationalError, SQLAlchemyError):
+                logger.exception(
+                    "Could not load billing status after send for owner %s",
+                    owner_id,
+                )
 
-        thread = threading.Thread(
-            target=_send_campaign_in_background,
-            kwargs={
-                "refresh_token": row["refresh_token"],
-                "sender_email": sender,
-                "messages": messages,
-                "people": people,
-                "company": company,
-                "subject": subj_final,
-                "body_text": body_final,
-                "owner_id": owner_id,
-                "resume_storage_path": path_clean,
-                "test_mode": test_mode,
-            },
-            name=f"campaign-send-{owner_id or 'anon'}",
-            daemon=False,
-        )
-        thread.start()
         response: dict = {
             "ok": True,
             "dry_run": False,
-            "queued": True,
+            "queued": queued,
             "sent": len(people),
             "count": len(people),
         }
@@ -856,6 +908,14 @@ def health_db():
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
-    uvicorn.run("app:app", host="127.0.0.1", port=5050, reload=True)
+    # Hot reload kills in-flight background sends. Opt in with UVICORN_RELOAD=1.
+    reload = os.environ.get("UVICORN_RELOAD", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    uvicorn.run("app:app", host="127.0.0.1", port=5050, reload=reload)

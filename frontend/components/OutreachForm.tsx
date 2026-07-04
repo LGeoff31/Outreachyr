@@ -47,7 +47,13 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { AutosizeTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { apiErrorMessage, readApiResponse, type ApiErrorBody } from "@/lib/apiError";
+import {
+  apiErrorMessage,
+  backendUnreachableMessage,
+  isBackendProxyFailure,
+  readApiResponse,
+  type ApiErrorBody,
+} from "@/lib/apiError";
 import {
   fetchBillingStatus,
   startCampaignUnlockCheckout,
@@ -663,6 +669,12 @@ export function OutreachForm() {
         const payload = data as SendResponse | null;
 
         if (!payload?.ok) {
+          if (isBackendProxyFailure(res.status, payload, text)) {
+            setErr(true);
+            setMessage("Could not reach the outreach API.");
+            setErrorDetails(backendUnreachableMessage());
+            return;
+          }
           if (
             dryRun &&
             isNoRecruitersDiscoveryError(payload, text)
@@ -744,7 +756,7 @@ export function OutreachForm() {
             setMessage(queuedSendMessage(recipientCount, false));
           } else {
             setMessage(
-              `Sent to ${recipientCount} recipient(s). Check your inbox for replies.`
+              `Sent to ${recipientCount} ${recipientCount === 1 ? "recipient" : "recipients"}. Check your Sent folder.`
             );
           }
           resetFormFields();
@@ -891,7 +903,7 @@ export function OutreachForm() {
   Use{" "}
   <span className="font-mono text-[0.7rem]">{"{{first_name}}"}</span> and{" "}
   <span className="font-mono text-[0.7rem]">{"{{company}}"}</span> in the
-  message.
+  message directly.
 </p>
 
               <Field>
@@ -1685,7 +1697,7 @@ function estimateSendDurationMinutes(recipientCount: number): number {
   const count = Math.max(1, recipientCount);
   if (count === 1) return 1;
 
-  const initialMaxSec = 12;
+  const initialMaxSec = 0;
   const spacingMaxSec = 48;
   const chunkPauseMaxSec = 100;
   const gaps = count - 1;

@@ -39,30 +39,40 @@ def _sleep_random(min_sec: float, max_sec: float) -> None:
     time.sleep(random.uniform(lo, hi))
 
 
-def send_messages_oauth(creds: Credentials, messages: list[EmailMessage]) -> None:
-    if not messages:
-        return
+def send_messages_oauth(
+    creds: Credentials,
+    messages: list[EmailMessage],
+    *,
+    start_index: int = 0,
+) -> int:
+    if not messages or start_index >= len(messages):
+        return 0
 
     creds = ensure_fresh_access_token(creds)
     service = build(
         "gmail", "v1", credentials=creds, cache_discovery=False
     )
 
-    initial_min, initial_max = _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 5.0, 12.0)
+    initial_min, initial_max = _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 0.0, 0.0)
     spacing_min, spacing_max = _delay_range("GMAIL_SEND_SPACING_SEC", 22.0, 48.0)
     chunk_pause_min, chunk_pause_max = _delay_range(
         "GMAIL_SEND_CHUNK_PAUSE_SEC", 50.0, 100.0
     )
 
-    _sleep_random(initial_min, initial_max)
+    if start_index == 0:
+        _sleep_random(initial_min, initial_max)
 
     chunk_target = random.randint(2, 4)
     sent_in_chunk = 0
+    sent_count = 0
 
     for index, msg in enumerate(messages):
+        if index < start_index:
+            continue
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
         service.users().messages().send(userId="me", body={"raw": raw}).execute()
         sent_in_chunk += 1
+        sent_count += 1
 
         if index >= len(messages) - 1:
             break
@@ -73,3 +83,5 @@ def send_messages_oauth(creds: Credentials, messages: list[EmailMessage]) -> Non
             _sleep_random(chunk_pause_min, chunk_pause_max)
             sent_in_chunk = 0
             chunk_target = random.randint(2, 4)
+
+    return sent_count
