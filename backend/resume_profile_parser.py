@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-AI_PARSER_VERSION = "langchain-groq-strict-json-schema-v1"
+AI_PARSER_VERSION = "langchain-groq-strict-json-schema-v7"
 PARSER_VERSION = AI_PARSER_VERSION
 DEFAULT_AI_MODEL = "openai/gpt-oss-20b"
 DEFAULT_AI_MAX_TOKENS = 4096
@@ -87,15 +87,15 @@ class _StrictResumeModel(BaseModel):
 class AiEducationItem(_StrictResumeModel):
     school: str | None = Field(
         default=None,
-        description="Display name of the school, college, university, or bootcamp."
+        description="Clean school name supported by the resume text."
     )
     degree: str | None = Field(
         default=None,
-        description="Degree, diploma, certificate, or program.",
+        description="Clean degree, diploma, certificate, or program supported by the resume text.",
     )
     major: str | None = Field(
         default=None,
-        description="Major, concentration, or field of study.",
+        description="Clean major, concentration, or field of study supported by the resume text.",
     )
     start_year: int | None = Field(
         default=None,
@@ -129,26 +129,26 @@ class AiExperienceItem(_StrictResumeModel):
             clean["skills"] = technologies
         return clean
 
-    title: str | None = Field(default=None, description="Role or job title.")
-    company: str | None = Field(default=None, description="Company or organization name.")
-    location: str | None = Field(default=None, description="Location when present.")
+    title: str | None = Field(default=None, description="Clean role or job title supported by the resume text.")
+    company: str | None = Field(default=None, description="Clean company or organization name supported by the resume text.")
+    location: str | None = Field(default=None, description="Clean location supported by the resume text.")
     start_date: str | None = Field(
         default=None,
-        description="Start date as written or normalized to YYYY-MM when obvious."
+        description="Clean start date for this role, splitting date ranges when present."
     )
     end_date: str | None = Field(
         default=None,
-        description="End date as written, Present, or normalized to YYYY-MM when obvious."
+        description="Clean end date for this role, splitting date ranges when present."
     )
     is_current: bool | None = Field(default=None, description="True if this role is current.")
     description: str | None = Field(
         default=None,
-        description="Concise description of the role.",
+        description="Clean concise description supported by the resume text for the role. Use null when unsupported.",
     )
     skills: list[str] = Field(
         default_factory=list,
         description=(
-            "Skills, tools, frameworks, and languages used in this role."
+            "Clean skills, tools, frameworks, and languages supported by this role in the resume text."
         ),
     )
     confidence: float | None = Field(
@@ -171,28 +171,28 @@ class AiProjectItem(_StrictResumeModel):
             clean["skills"] = technologies
         return clean
 
-    name: str | None = Field(default=None, description="Project name.")
+    name: str | None = Field(default=None, description="Clean project name supported by the resume text; remove PDF icon alt text and tech-stack separators.")
     description: str | None = Field(
         default=None,
-        description="Concise project description.",
+        description="Clean concise description supported by the resume text for the project. Use null when unsupported.",
     )
     skills: list[str] = Field(
         default_factory=list,
         description=(
-            "Skills, tools, frameworks, and languages used in the project."
+            "Clean skills, tools, frameworks, and languages supported by this project in the resume text."
         ),
     )
     links: list[str] = Field(
         default_factory=list,
-        description="Project links when present.",
+        description="Project links supported by the resume text when present.",
     )
     start_date: str | None = Field(
         default=None,
-        description="Project start date when present.",
+        description="Clean project start date supported by the resume text, splitting date ranges when present.",
     )
     end_date: str | None = Field(
         default=None,
-        description="Project end date when present.",
+        description="Clean project end date supported by the resume text, splitting date ranges when present.",
     )
     confidence: float | None = Field(
         default=None,
@@ -205,11 +205,11 @@ class AiProjectItem(_StrictResumeModel):
 class AiResumeProfile(_StrictResumeModel):
     primary_school_name: str | None = Field(
         default=None,
-        description="Best current or most relevant school for recruiter matching."
+        description="Best current or most relevant school supported by the resume text for recruiter matching."
     )
     primary_major: str | None = Field(
         default=None,
-        description="Best current or most relevant major/field of study."
+        description="Best current or most relevant major/field of study supported by the resume text."
     )
     grad_year: int | None = Field(
         default=None,
@@ -217,7 +217,7 @@ class AiResumeProfile(_StrictResumeModel):
     )
     skills: list[str] = Field(
         default_factory=list,
-        description="Deduplicated skills, tools, frameworks, and languages.",
+        description="Deduplicated clean skills, tools, frameworks, and languages supported by the resume text.",
     )
     education: list[AiEducationItem] = Field(
         default_factory=list,
@@ -233,7 +233,7 @@ class AiResumeProfile(_StrictResumeModel):
     )
     links: list[str] = Field(
         default_factory=list,
-        description="Portfolio, GitHub, LinkedIn, and other URLs.",
+        description="Portfolio, GitHub, LinkedIn, and other URLs supported by the resume text.",
     )
 
 
@@ -368,27 +368,70 @@ def _parse_resume_text_with_langchain_groq(raw_text: str) -> AiResumeProfile:
         method="json_schema",
         strict=True,
     )
-    result = structured_llm.invoke(
-        [
-            (
-                "system",
-                "Extract a resume profile from the complete resume text. "
-                "Use only facts present in the text. Prefer the current or expected "
-                "school as primary_school_name when multiple schools appear. Return "
-                "empty lists for absent sections and null for unknown scalar fields.",
-            ),
-            (
-                "human",
-                "Complete resume text:\n\n"
-                "<resume_text>\n"
-                f"{raw_text}\n"
-                "</resume_text>",
-            ),
-        ]
-    )
+    try:
+        result = structured_llm.invoke(_resume_profile_ai_messages(raw_text))
+    except Exception as e:
+        if not _is_resume_ai_generation_error(e):
+            raise
+        logger.warning(
+            "AI resume parsing schema generation failed; retrying once: %s",
+            e,
+        )
+        result = structured_llm.invoke(
+            _resume_profile_ai_messages(raw_text, retry=True)
+        )
     if isinstance(result, AiResumeProfile):
         return result
     return AiResumeProfile.model_validate(result)
+
+
+def _resume_profile_ai_messages(
+    raw_text: str,
+    *,
+    retry: bool = False,
+) -> list[tuple[str, str]]:
+    system_message = (
+        "Extract a resume profile from the complete resume text. "
+        "Use only facts present in the text. Prefer the current or expected "
+        "school as primary_school_name when multiple schools appear. Every "
+        "object must include every key from the schema. Never omit keys. "
+        "Use null for unknown scalar fields. Use empty lists for absent repeated "
+        "fields. Extract clean semantic resume fields from messy PDF text. "
+        "Use only information present in the resume. Clean PDF artifacts, icon alt text, "
+        "layout separators, and broken whitespace. Split date ranges into start_date "
+        "and end_date. Split project header lines into project name, skills, and links "
+        "when obvious. Do not invent missing facts. "
+    )
+    if retry:
+        system_message += (
+            " Previous attempt failed because the generated JSON did not match "
+            "the strict schema. Include every key on every object and use null "
+            "or [] for unknown values. Keep fields clean and semantic."
+        )
+    return [
+        ("system", system_message),
+        (
+            "human",
+            "Complete resume text:\n\n"
+            "<resume_text>\n"
+            f"{raw_text}\n"
+            "</resume_text>",
+        ),
+    ]
+
+
+def _is_resume_ai_generation_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(
+        marker in message
+        for marker in (
+            "generated json does not match",
+            "failed_generation",
+            "does not validate",
+            "failed to parse tool call arguments as json",
+            "tool_use_failed",
+        )
+    )
 
 
 def _ai_resume_profile_strict_schema() -> dict[str, Any]:
@@ -543,6 +586,8 @@ def _clean_ai_record(value: dict[str, Any]) -> dict[str, Any]:
             continue
         clean[key] = item
     return clean
+
+
 
 
 def _clean_optional_string(value: Any) -> str | None:
