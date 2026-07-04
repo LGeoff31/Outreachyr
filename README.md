@@ -29,6 +29,16 @@ When the repo is shared between Windows and WSL, the root dev command keeps the 
 
 The API runs on `http://127.0.0.1:5050`.
 
+### Backend quality checks
+
+Run backend linting, formatting, and type checking from `backend/`:
+
+```sh
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+```
+
 ## Frontend
 
 1. Go to the frontend app: `cd frontend`
