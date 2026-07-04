@@ -606,7 +606,13 @@ export function OutreachForm() {
       setSendSuccess(false);
       setSendQueued(false);
       setErrorDetails(null);
-      setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
+      setMessage(
+        dryRun
+          ? "Finding recruiters..."
+          : !dryRun && recipients.length > 1
+            ? "Starting campaign..."
+            : "Sending campaign..."
+      );
 
       if (!dryRun) {
         await syncGmailSendSession();
@@ -900,10 +906,10 @@ export function OutreachForm() {
   </label>
 </div>
 <p className="text-xs leading-relaxed text-muted-foreground">
-  Use{" "}
+  Use{" "} dynamic values{" "}
   <span className="font-mono text-[0.7rem]">{"{{first_name}}"}</span> and{" "}
   <span className="font-mono text-[0.7rem]">{"{{company}}"}</span> in the
-  message directly.
+  message.
 </p>
 
               <Field>

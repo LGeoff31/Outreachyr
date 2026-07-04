@@ -7,7 +7,14 @@
         },
         "backend": {
             "entrypoint": "backend",
-            "routePrefix": "/_/backend"
+            "routePrefix": "/_/backend",
+            "maxDuration": 300
         }
-    }
+    },
+    "crons": [
+        {
+            "path": "/_/backend/api/internal/process-send-queue",
+            "schedule": "* * * * *"
+        }
+    ]
 }
