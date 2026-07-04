@@ -473,12 +473,7 @@ export function ResumesView({
           </label>
         </section>
 
-        {listLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 aria-hidden className="size-4 animate-spin" />
-            Loading resumes…
-          </div>
-        ) : visibleResumes.length > 0 ? (
+        {!listLoading && visibleResumes.length > 0 ? (
           <section
             aria-label="Resumes"
             className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3"
@@ -503,7 +498,11 @@ export function ResumesView({
         ) : (
           <Card className="rounded-2xl bg-card shadow-sm">
             <CardContent className="p-5">
-              <ResumesEmptyState hasResumes={hasResumes} />
+              {listLoading ? (
+                <ResumesLoadingState />
+              ) : (
+                <ResumesEmptyState hasResumes={hasResumes} />
+              )}
             </CardContent>
           </Card>
         )}
@@ -560,6 +559,20 @@ export function ResumesView({
         />
       ) : null}
     </main>
+  );
+}
+
+function ResumesLoadingState() {
+  return (
+    <Empty className="min-h-56 border border-dashed border-border bg-muted/40 sm:min-h-[18rem]">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Loader2 aria-hidden="true" className="animate-spin" />
+        </EmptyMedia>
+        <EmptyTitle>Loading resumes…</EmptyTitle>
+        <EmptyDescription>Checking your resume library.</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
