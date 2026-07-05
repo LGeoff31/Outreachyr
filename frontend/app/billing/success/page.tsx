@@ -1,0 +1,146 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CheckCircle2, Loader2 } from "lucide-react";
+
+import { buttonVariants } from "@/components/ui/button";
+import { confirmCheckoutSession, fetchBillingStatus } from "@/lib/billing";
+import { loginPathWithNext } from "@/lib/safeNextPath";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
+
+function BillingSuccessContent() {
+  const searchParams = useSearchParams();
+  const sessionId = searchParams.get("session_id")?.trim() || "";
+  const [ready, setReady] = useState(false);
+  const [polling, setPolling] = useState(true);
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      if (isSupabaseConfigured()) {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        if (!cancelled) {
+          setSignedIn(Boolean(data.user));
+        }
+      }
+
+      if (sessionId) {
+        const confirmed = await confirmCheckoutSession(sessionId);
+        if (confirmed?.unlocked) {
+          if (!cancelled) {
+            setReady(true);
+            setPolling(false);
+          }
+          return;
+        }
+      }
+
+      let attempts = 0;
+      while (!cancelled && attempts < 12) {
+        attempts += 1;
+        const status = await fetchBillingStatus();
+        if (status?.unlocked) {
+          if (!cancelled) {
+            setReady(true);
+            setPolling(false);
+          }
+          return;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      }
+      if (!cancelled) setPolling(false);
+    }
+
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const loginHref = loginPathWithNext("/dashboard/new");
+
+  return (
+    <main className="flex min-h-screen items-center justify-center px-5 py-16">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        {ready ? (
+          <>
+            <CheckCircle2
+              aria-hidden
+              className="mx-auto size-10 text-[hsl(var(--chart-2))]"
+            />
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+              You&apos;re unlocked
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Unlimited campaigns are now available on your account.
+            </p>
+            {signedIn ? (
+              <Link
+                href="/dashboard/new"
+                className={cn(buttonVariants(), "mt-6 rounded-xl")}
+              >
+                Start a campaign
+              </Link>
+            ) : (
+              <Link
+                href={loginHref}
+                className={cn(buttonVariants(), "mt-6 rounded-xl")}
+              >
+                Sign in to start a campaign
+              </Link>
+            )}
+          </>
+        ) : (
+          <>
+            <Loader2
+              aria-hidden
+              className="mx-auto size-8 animate-spin text-muted-foreground"
+            />
+            <h1 className="mt-4 text-xl font-semibold tracking-tight">
+              {polling ? "Confirming payment…" : "Almost there"}
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {polling
+                ? "This usually takes a few seconds."
+                : "We could not confirm unlock yet. Sign in and refresh, or contact support with your payment receipt."}
+            </p>
+            {!polling ? (
+              <Link
+                href={loginHref}
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "mt-6 rounded-xl"
+                )}
+              >
+                Sign in
+              </Link>
+            ) : null}
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
+
+export default function BillingSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center">
+          <Loader2
+            aria-hidden
+            className="size-8 animate-spin text-muted-foreground"
+          />
+        </main>
+      }
+    >
+      <BillingSuccessContent />
+    </Suspense>
+  );
+}

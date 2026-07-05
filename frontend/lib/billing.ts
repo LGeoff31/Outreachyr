@@ -40,12 +40,19 @@ export async function confirmCheckoutSession(
   sessionId: string
 ): Promise<BillingStatus | null> {
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    try {
+      Object.assign(headers, await resumeApiAuthHeaders());
+    } catch {
+      /* Stripe return may land before Supabase session is restored */
+    }
+
     const res = await fetch("/api/billing/confirm", {
       method: "POST",
-      headers: {
-        ...(await resumeApiAuthHeaders()),
-        "Content-Type": "application/json",
-      },
+      headers,
+      credentials: "include",
       body: JSON.stringify({ session_id: sessionId }),
     });
     if (!res.ok) return null;
