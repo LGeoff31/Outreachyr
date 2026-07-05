@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import base64
-import os
-import random
-import time
 from email.message import EmailMessage
 
 from google.auth.transport.requests import Request
@@ -17,34 +14,6 @@ def ensure_fresh_access_token(creds: Credentials) -> Credentials:
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
     return creds
-
-
-def _delay_range(
-    env_name: str, default_min: float, default_max: float
-) -> tuple[float, float]:
-    raw = os.environ.get(env_name, "").strip()
-    if not raw:
-        return default_min, default_max
-    parts = [p.strip() for p in raw.split(",", 1)]
-    if len(parts) == 2:
-        return float(parts[0]), float(parts[1])
-    value = float(parts[0])
-    return value, value
-
-
-def _sleep_random(min_sec: float, max_sec: float) -> None:
-    lo, hi = min(min_sec, max_sec), max(min_sec, max_sec)
-    if hi <= 0:
-        return
-    time.sleep(random.uniform(lo, hi))
-
-
-def delay_ranges() -> dict[str, tuple[float, float]]:
-    return {
-        "initial": _delay_range("GMAIL_SEND_INITIAL_DELAY_SEC", 0.0, 0.0),
-        "spacing": _delay_range("GMAIL_SEND_SPACING_SEC", 22.0, 48.0),
-        "chunk_pause": _delay_range("GMAIL_SEND_CHUNK_PAUSE_SEC", 50.0, 100.0),
-    }
 
 
 def send_single_message(creds: Credentials, msg: EmailMessage) -> None:
@@ -65,33 +34,11 @@ def send_messages_oauth(
     if not messages or start_index >= len(messages):
         return 0
 
-    delays = delay_ranges()
-    initial_min, initial_max = delays["initial"]
-    spacing_min, spacing_max = delays["spacing"]
-    chunk_pause_min, chunk_pause_max = delays["chunk_pause"]
-
-    if start_index == 0:
-        _sleep_random(initial_min, initial_max)
-
-    chunk_target = random.randint(2, 4)
-    sent_in_chunk = 0
     sent_count = 0
-
     for index, msg in enumerate(messages):
         if index < start_index:
             continue
         send_single_message(creds, msg)
-        sent_in_chunk += 1
         sent_count += 1
-
-        if index >= len(messages) - 1:
-            break
-
-        _sleep_random(spacing_min, spacing_max)
-
-        if sent_in_chunk >= chunk_target:
-            _sleep_random(chunk_pause_min, chunk_pause_max)
-            sent_in_chunk = 0
-            chunk_target = random.randint(2, 4)
 
     return sent_count

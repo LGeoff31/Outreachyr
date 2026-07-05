@@ -19,7 +19,7 @@ from sqlalchemy import text
 import google_oauth as google_auth
 import session_store
 from database import make_engine
-from gmail_send_oauth import delay_ranges, send_single_message
+from gmail_send_oauth import send_single_message
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +51,8 @@ def _compute_next_send_after(
     sent_in_chunk: int,
     chunk_target: int | None,
 ) -> datetime:
-    spacing_min, spacing_max = delay_ranges()["spacing"]
-    delay = _random_delay(spacing_min, spacing_max)
-    if chunk_target and sent_in_chunk >= chunk_target:
-        chunk_min, chunk_max = delay_ranges()["chunk_pause"]
-        delay += _random_delay(chunk_min, chunk_max)
-    return datetime.now(UTC) + timedelta(seconds=delay)
+    del sent_in_chunk, chunk_target
+    return datetime.now(UTC)
 
 
 def create_send_job(

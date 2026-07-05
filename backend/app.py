@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-import threading
 import uuid
 from contextlib import asynccontextmanager
 from email.message import EmailMessage
@@ -330,20 +329,6 @@ def _gmail_api_error_response(exc: HttpError) -> JSONResponse:
     )
 
 
-def _is_serverless() -> bool:
-    return os.environ.get("VERCEL", "").strip() == "1"
-
-
-def _continue_send_job_in_background(job_id: uuid.UUID) -> None:
-    try:
-        send_queue.process_send_queue(
-            max_seconds=3600.0,
-            preferred_job_id=job_id,
-        )
-    except Exception:
-        logger.exception("Background send queue failed for job %s", job_id)
-
-
 def _send_campaign(
     request: Request,
     *,
@@ -426,65 +411,18 @@ def _send_campaign(
                 resume_filename=attachment_name,
             )
             ensure_fresh_access_token(creds)
-            queued = False
-            owner_id = _owner_id_for_send(request, row)
             logger.info(
-                "Sending campaign for %s (%d recipient(s), test_mode=%s, serverless=%s)",
+                "Sending campaign for %s (%d recipient(s), test_mode=%s)",
                 sender,
                 len(people),
                 test_mode,
-                _is_serverless(),
             )
-            if len(messages) > 1:
-                if owner_id is None:
-                    return JSONResponse(
-                        status_code=401,
-                        content={
-                            "ok": False,
-                            "code": "auth_required",
-                            "error": "Sign in is required before sending a campaign.",
-                            "auth_required": True,
-                        },
-                    )
-                session_id = request.cookies.get("outreach_session", "").strip()
-                job_id = send_queue.create_send_job(
-                    owner_id=owner_id,
-                    session_id=session_id,
-                    sender_email=sender,
-                    messages=messages,
-                )
-                result = send_queue.kickoff_send_job(job_id)
-                queued = result["has_more"]
-                if queued and _is_serverless():
-                    send_queue.process_send_queue(
-                        max_seconds=55.0,
-                        preferred_job_id=job_id,
-                    )
-                    refreshed = send_queue.read_job_status(job_id)
-                    queued = refreshed == "pending"
-                elif queued and not _is_serverless():
-                    thread = threading.Thread(
-                        target=_continue_send_job_in_background,
-                        args=(job_id,),
-                        name=f"campaign-send-job-{job_id}",
-                        daemon=False,
-                    )
-                    thread.start()
-                logger.info(
-                    "Send job %s for %s started (status=%s, queued=%s, serverless=%s)",
-                    job_id,
-                    sender,
-                    result["status"],
-                    queued,
-                    _is_serverless(),
-                )
-            else:
-                send_messages_oauth(creds, messages)
-                logger.info(
-                    "Campaign send finished for %s (%d recipient(s))",
-                    sender,
-                    len(people),
-                )
+            send_messages_oauth(creds, messages)
+            logger.info(
+                "Campaign send finished for %s (%d recipient(s))",
+                sender,
+                len(people),
+            )
         except RefreshError as e:
             err_text = str(e)
             detail = "Reconnect Gmail by signing out and signing in again."

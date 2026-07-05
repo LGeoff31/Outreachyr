@@ -490,13 +490,14 @@ export function OutreachForm() {
   const campaignAccessBlocked =
     billingStatus?.billing_enabled === true &&
     billingStatus.can_send === false;
+  const isSending = loading === "send" || sendInFlight;
   const canSend =
     recipients.length > 0 &&
     loading === null &&
     !sendInFlight &&
     !billingBlocked;
   const sendBlockedReason =
-    canSend || sendInFlight
+    canSend || isSending
       ? undefined
       : billingBlocked
         ? "Pay $5 once to unlock more campaigns."
@@ -638,21 +639,19 @@ export function OutreachForm() {
         return;
       }
 
-      setLoading(dryRun ? "preview" : null);
+      setLoading(dryRun ? "preview" : "send");
       setSendInFlight(!dryRun);
       setErr(false);
       setSendSuccess(false);
       setSendQueued(false);
       setErrorDetails(null);
-      setMessage(dryRun ? "Finding recruiters..." : "");
+      setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
 
       if (!dryRun) {
         await syncGmailSendSession();
       }
 
-      const recipientCountForSend = recipients.length;
       const recipientsForSend = recipients;
-      const isOptimisticSend = !dryRun && recipientCountForSend > 0;
 
       const fd = new FormData();
       fd.append("company", company.trim());
@@ -700,22 +699,6 @@ export function OutreachForm() {
         }
       }
 
-      if (isOptimisticSend) {
-        setSendInFlight(false);
-        setRecipients([]);
-        setSendSuccess(true);
-        setSendQueued(recipientCountForSend > 1);
-        setCelebrateSend((n) => n + 1);
-        setMessage(
-          recipientCountForSend > 1
-            ? queuedSendMessage(recipientCountForSend, testMode)
-            : testMode
-              ? "Sending to your test address. Check your Sent folder."
-              : "Sent to 1 recipient. Check your Sent folder."
-        );
-        resetFormFields();
-      }
-
       try {
         const res = await fetch("/api/send", {
           method: "POST",
@@ -727,10 +710,6 @@ export function OutreachForm() {
         const payload = data as SendResponse | null;
 
         if (!payload?.ok) {
-          if (isOptimisticSend) {
-            setSendSuccess(false);
-            setSendQueued(false);
-          }
           if (isBackendProxyFailure(res.status, payload, text)) {
             if (dryRun) {
               setRecipients([]);
@@ -817,44 +796,19 @@ export function OutreachForm() {
           );
         } else {
           const recipientCount = payload.sent ?? payload.count ?? 0;
-          const queued = payload.queued === true;
-          if (isOptimisticSend) {
-            if (payload.billing) {
-              setBillingStatus(payload.billing);
-            } else if (!testMode) {
-              void fetchBillingStatus().then(setBillingStatus);
-            }
-          } else {
-            setRecipients([]);
-            setSendSuccess(true);
-            setSendQueued(queued);
-            setCelebrateSend((n) => n + 1);
-            if (payload.billing) {
-              setBillingStatus(payload.billing);
-            } else if (!testMode) {
-              void fetchBillingStatus().then(setBillingStatus);
-            }
-            if (testMode) {
-              setMessage(
-                queued
-                  ? queuedSendMessage(recipientCount, true)
-                  : `Sent to ${recipientCount} test ${recipientCount === 1 ? "address" : "addresses"}. Check your Sent folder to confirm delivery.`
-              );
-            } else if (queued) {
-              setMessage(queuedSendMessage(recipientCount, false));
-            } else {
-              setMessage(
-                `Sent to ${recipientCount} ${recipientCount === 1 ? "recipient" : "recipients"}. Check your Sent folder.`
-              );
-            }
-            resetFormFields();
+          setRecipients([]);
+          setSendSuccess(true);
+          setSendQueued(false);
+          setCelebrateSend((n) => n + 1);
+          if (payload.billing) {
+            setBillingStatus(payload.billing);
+          } else if (!testMode) {
+            void fetchBillingStatus().then(setBillingStatus);
           }
+          setMessage(sendSuccessMessage(recipientCount, testMode));
+          resetFormFields();
         }
       } catch (e) {
-        if (isOptimisticSend) {
-          setSendSuccess(false);
-          setSendQueued(false);
-        }
         if (dryRun) {
           setRecipients([]);
           setErr(false);
@@ -1177,16 +1131,24 @@ export function OutreachForm() {
             ) : null}
             <Button
               type="button"
-              disabled={!canSend}
+              disabled={isSending || !canSend}
               onClick={() => void runCampaign(false)}
               size="lg"
               className={cn(
                 "min-h-10 rounded-xl px-8",
-                !canSend && "pointer-events-none"
+                (isSending || !canSend) && "pointer-events-none"
               )}
             >
-              <SendHorizontal data-icon="inline-start" aria-hidden="true" />
-              Send campaign
+              {isSending ? (
+                <Loader2
+                  data-icon="inline-start"
+                  aria-hidden="true"
+                  className="animate-spin"
+                />
+              ) : (
+                <SendHorizontal data-icon="inline-start" aria-hidden="true" />
+              )}
+              {isSending ? "Sending..." : "Send campaign"}
             </Button>
           </span>
         </div>
@@ -1782,9 +1744,7 @@ function ReviewPanel({
               {err ? (
                 <AlertTitle>Error</AlertTitle>
               ) : sendSuccess ? (
-                <AlertTitle>
-                  {sendQueued ? "Campaign sending" : "Campaign sent"}
-                </AlertTitle>
+                <AlertTitle>Campaign sent</AlertTitle>
               ) : null}
               <AlertDescription
                 className={cn(
@@ -2063,40 +2023,15 @@ function recipientNameFromEmail(email?: string) {
     .join(" ");
 }
 
-function estimateSendDurationMinutes(recipientCount: number): number {
-  const count = Math.max(1, recipientCount);
-  if (count === 1) return 1;
-
-  const initialMaxSec = 0;
-  const spacingMaxSec = 48;
-  const chunkPauseMaxSec = 100;
-  const gaps = count - 1;
-  const chunkPauses = Math.max(0, Math.floor(gaps / 2));
-  const totalSec =
-    initialMaxSec + gaps * spacingMaxSec + chunkPauses * chunkPauseMaxSec;
-
-  return Math.max(2, Math.ceil(totalSec / 60));
-}
-
-function withinMinutesLabel(minutes: number) {
-  return minutes === 1 ? "within 1 minute" : `within ${minutes} minutes`;
-}
-
-function queuedSendMessage(recipientCount: number, testMode: boolean) {
-  const minutes = estimateSendDurationMinutes(recipientCount);
-  const timing = withinMinutesLabel(minutes);
-
+function sendSuccessMessage(recipientCount: number, testMode: boolean) {
   if (testMode) {
-    const target =
-      recipientCount === 1
-        ? "your test address"
-        : `your ${recipientCount} test addresses`;
-    return `Sending to ${target} in the background. Emails go out one at a time to avoid it being spam and should all be sent ${timing}. Check your Sent folder.`;
+    return recipientCount === 1
+      ? "Sent to your test address. Check your Sent folder."
+      : `Sent to ${recipientCount} test addresses. Check your Sent folder.`;
   }
-
-  const recipientLabel =
-    recipientCount === 1 ? "1 recipient" : `${recipientCount} recipients`;
-  return `Campaign started for ${recipientLabel}. Emails go out one at a time to avoid it being spam and should all be sent ${timing}. Check your Sent folder.`;
+  return recipientCount === 1
+    ? "Sent to 1 recipient. Check your Sent folder."
+    : `Sent to ${recipientCount} recipients. Check your Sent folder.`;
 }
 
 function FreeCampaignsBadge({ status }: { status: BillingStatus | null }) {
