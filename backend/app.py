@@ -637,6 +637,13 @@ def _run_send(
                     school_normalized=resume_profile_school_normalized,
                 )
         except RuntimeError as e:
+            if dry_run:
+                return {
+                    "ok": True,
+                    "dry_run": True,
+                    "count": 0,
+                    "recipients": [],
+                }
             return JSONResponse(
                 status_code=502,
                 content={"ok": False, "error": str(e)},

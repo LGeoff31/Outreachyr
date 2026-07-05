@@ -59,6 +59,8 @@ import {
   backendUnreachableMessage,
   isBackendProxyFailure,
   readApiResponse,
+  recruiterSearchFailedMessage,
+  recruiterSearchUnavailableMessage,
   type ApiErrorBody,
 } from "@/lib/apiError";
 import {
@@ -730,6 +732,18 @@ export function OutreachForm() {
             setSendQueued(false);
           }
           if (isBackendProxyFailure(res.status, payload, text)) {
+            if (dryRun) {
+              setRecipients([]);
+              setErr(false);
+              setMessage(recruiterSearchUnavailableMessage());
+              setErrorDetails(
+                typeof window !== "undefined" &&
+                  window.location.hostname === "localhost"
+                  ? backendUnreachableMessage()
+                  : null
+              );
+              return;
+            }
             setErr(true);
             setMessage("Could not reach the outreach API.");
             setErrorDetails(backendUnreachableMessage());
@@ -742,7 +756,14 @@ export function OutreachForm() {
             setRecipients([]);
             setErr(false);
             setErrorDetails(null);
-            setMessage(noRecruitersMessage(company));
+            setMessage(recruiterSearchFailedMessage(company));
+            return;
+          }
+          if (dryRun && res.status >= 500) {
+            setRecipients([]);
+            setErr(false);
+            setErrorDetails(null);
+            setMessage(recruiterSearchUnavailableMessage());
             return;
           }
           setErr(true);
@@ -789,7 +810,7 @@ export function OutreachForm() {
           setSendSuccess(false);
           setMessage(
             nextRecipients.length === 0
-              ? noRecruitersMessage(company)
+              ? recruiterSearchFailedMessage(company)
               : testMode
                 ? `${payload.count ?? nextRecipients.length} test recipient loaded.`
                 : `${payload.count ?? nextRecipients.length} recipients found.`
@@ -833,6 +854,20 @@ export function OutreachForm() {
         if (isOptimisticSend) {
           setSendSuccess(false);
           setSendQueued(false);
+        }
+        if (dryRun) {
+          setRecipients([]);
+          setErr(false);
+          setMessage(recruiterSearchUnavailableMessage());
+          setErrorDetails(
+            typeof window !== "undefined" &&
+              window.location.hostname === "localhost"
+              ? backendUnreachableMessage()
+              : e instanceof Error
+                ? e.message
+                : "Network error while calling /api/send"
+          );
+          return;
         }
         setErr(true);
         setMessage("Could not reach the outreach server.");
@@ -2080,13 +2115,6 @@ function FreeCampaignsBadge({ status }: { status: BillingStatus | null }) {
         : `${remaining} free ${remaining === 1 ? "campaign" : "campaigns"} left`}
     </Badge>
   );
-}
-
-function noRecruitersMessage(company: string) {
-  const name = company.trim();
-  return name
-    ? `No recruiters found for ${name}.`
-    : "No recruiters found for that company.";
 }
 
 function isNoRecruitersDiscoveryError(

@@ -19,8 +19,19 @@ function apiBaseUrl() {
   return "http://127.0.0.1:5050";
 }
 
+const isLocalBackend =
+  !process.env.OUTREACH_API_URL?.trim() && !process.env.VERCEL;
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
+  ...(isLocalBackend
+    ? {
+        experimental: {
+          // SerpAPI recruiter discovery can exceed the default 30s dev proxy limit.
+          proxyTimeout: 180_000,
+        },
+      }
+    : {}),
   async rewrites() {
     const api = apiBaseUrl();
     return [

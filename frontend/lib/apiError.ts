@@ -46,8 +46,30 @@ export function isBackendProxyFailure(
 
 export function backendUnreachableMessage(): string {
   return (
-    "The outreach API at http://127.0.0.1:5050 did not respond. " +
-    "In a separate terminal run: cd backend && uv run python3 app.py"
+    "The outreach server did not respond. If you are running locally, start the backend " +
+    "in a separate terminal: cd backend && uv run python3 app.py"
+  );
+}
+
+export function recruiterSearchFailedMessage(company: string): string {
+  const name = company.trim();
+  if (name) {
+    return (
+      `We couldn't find recruiter emails for ${name}. ` +
+      "Google may not have returned matching results — try the full company name, " +
+      "then fetch again."
+    );
+  }
+  return (
+    "We couldn't find recruiter emails for that company. " +
+    "Try the full company name, then fetch again."
+  );
+}
+
+export function recruiterSearchUnavailableMessage(): string {
+  return (
+    "We couldn't reach the recruiter search service. " +
+    "Please try again in a moment."
   );
 }
 
