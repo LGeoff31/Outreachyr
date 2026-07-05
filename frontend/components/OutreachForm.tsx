@@ -157,6 +157,7 @@ export function OutreachForm() {
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState<"preview" | "send" | null>(null);
+  const [sendInFlight, setSendInFlight] = useState(false);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignLoadError, setCampaignLoadError] = useState<string | null>(
     null
@@ -490,9 +491,10 @@ export function OutreachForm() {
   const canSend =
     recipients.length > 0 &&
     loading === null &&
+    !sendInFlight &&
     !billingBlocked;
   const sendBlockedReason =
-    canSend || loading === "send"
+    canSend || sendInFlight
       ? undefined
       : billingBlocked
         ? "Pay $5 once to unlock more campaigns."
@@ -634,22 +636,21 @@ export function OutreachForm() {
         return;
       }
 
-      setLoading(dryRun ? "preview" : "send");
+      setLoading(dryRun ? "preview" : null);
+      setSendInFlight(!dryRun);
       setErr(false);
       setSendSuccess(false);
       setSendQueued(false);
       setErrorDetails(null);
-      setMessage(
-        dryRun
-          ? "Finding recruiters..."
-          : !dryRun && recipients.length > 1
-            ? "Starting campaign..."
-            : "Sending campaign..."
-      );
+      setMessage(dryRun ? "Finding recruiters..." : "");
 
       if (!dryRun) {
         await syncGmailSendSession();
       }
+
+      const recipientCountForSend = recipients.length;
+      const recipientsForSend = recipients;
+      const isOptimisticSend = !dryRun && recipientCountForSend > 0;
 
       const fd = new FormData();
       fd.append("company", company.trim());
@@ -657,8 +658,8 @@ export function OutreachForm() {
       fd.append("test_mode", testMode ? "true" : "false");
       fd.append("subject", subject);
       fd.append("body_text", bodyText);
-      if (!dryRun && recipients.length > 0) {
-        fd.append("selected_recipients", JSON.stringify(recipients));
+      if (!dryRun && recipientsForSend.length > 0) {
+        fd.append("selected_recipients", JSON.stringify(recipientsForSend));
       }
       if (file) fd.append("resume", file, file.name);
       const libraryRow = selectedSavedResumeId
@@ -697,6 +698,22 @@ export function OutreachForm() {
         }
       }
 
+      if (isOptimisticSend) {
+        setSendInFlight(false);
+        setRecipients([]);
+        setSendSuccess(true);
+        setSendQueued(recipientCountForSend > 1);
+        setCelebrateSend((n) => n + 1);
+        setMessage(
+          recipientCountForSend > 1
+            ? queuedSendMessage(recipientCountForSend, testMode)
+            : testMode
+              ? "Sending to your test address. Check your Sent folder."
+              : "Sent to 1 recipient. Check your Sent folder."
+        );
+        resetFormFields();
+      }
+
       try {
         const res = await fetch("/api/send", {
           method: "POST",
@@ -708,6 +725,10 @@ export function OutreachForm() {
         const payload = data as SendResponse | null;
 
         if (!payload?.ok) {
+          if (isOptimisticSend) {
+            setSendSuccess(false);
+            setSendQueued(false);
+          }
           if (isBackendProxyFailure(res.status, payload, text)) {
             setErr(true);
             setMessage("Could not reach the outreach API.");
@@ -776,31 +797,43 @@ export function OutreachForm() {
         } else {
           const recipientCount = payload.sent ?? payload.count ?? 0;
           const queued = payload.queued === true;
-          setRecipients([]);
-          setSendSuccess(true);
-          setSendQueued(queued);
-          setCelebrateSend((n) => n + 1);
-          if (payload.billing) {
-            setBillingStatus(payload.billing);
-          } else if (!testMode) {
-            void fetchBillingStatus().then(setBillingStatus);
-          }
-          if (testMode) {
-            setMessage(
-              queued
-                ? queuedSendMessage(recipientCount, true)
-                : `Sent to ${recipientCount} test ${recipientCount === 1 ? "address" : "addresses"}. Check your Sent folder to confirm delivery.`
-            );
-          } else if (queued) {
-            setMessage(queuedSendMessage(recipientCount, false));
+          if (isOptimisticSend) {
+            if (payload.billing) {
+              setBillingStatus(payload.billing);
+            } else if (!testMode) {
+              void fetchBillingStatus().then(setBillingStatus);
+            }
           } else {
-            setMessage(
-              `Sent to ${recipientCount} ${recipientCount === 1 ? "recipient" : "recipients"}. Check your Sent folder.`
-            );
+            setRecipients([]);
+            setSendSuccess(true);
+            setSendQueued(queued);
+            setCelebrateSend((n) => n + 1);
+            if (payload.billing) {
+              setBillingStatus(payload.billing);
+            } else if (!testMode) {
+              void fetchBillingStatus().then(setBillingStatus);
+            }
+            if (testMode) {
+              setMessage(
+                queued
+                  ? queuedSendMessage(recipientCount, true)
+                  : `Sent to ${recipientCount} test ${recipientCount === 1 ? "address" : "addresses"}. Check your Sent folder to confirm delivery.`
+              );
+            } else if (queued) {
+              setMessage(queuedSendMessage(recipientCount, false));
+            } else {
+              setMessage(
+                `Sent to ${recipientCount} ${recipientCount === 1 ? "recipient" : "recipients"}. Check your Sent folder.`
+              );
+            }
+            resetFormFields();
           }
-          resetFormFields();
         }
       } catch (e) {
+        if (isOptimisticSend) {
+          setSendSuccess(false);
+          setSendQueued(false);
+        }
         setErr(true);
         setMessage("Could not reach the outreach server.");
         setErrorDetails(
@@ -808,6 +841,7 @@ export function OutreachForm() {
         );
       } finally {
         setLoading(null);
+        setSendInFlight(false);
       }
     },
     [
@@ -1095,7 +1129,7 @@ export function OutreachForm() {
             ref={sendButtonWrapRef}
             className={cn(
               "group relative inline-flex",
-              !canSend && loading !== "send" && "cursor-not-allowed"
+              !canSend && "cursor-not-allowed"
             )}
           >
             {sendBlockedReason ? (
@@ -1113,19 +1147,11 @@ export function OutreachForm() {
               size="lg"
               className={cn(
                 "min-h-10 rounded-xl px-8",
-                !canSend && loading !== "send" && "pointer-events-none"
+                !canSend && "pointer-events-none"
               )}
             >
-              {loading === "send" ? (
-                <Loader2
-                  data-icon="inline-start"
-                  aria-hidden="true"
-                  className="animate-spin"
-                />
-              ) : (
-                <SendHorizontal data-icon="inline-start" aria-hidden="true" />
-              )}
-              {loading === "send" ? "Sending..." : "Send campaign"}
+              <SendHorizontal data-icon="inline-start" aria-hidden="true" />
+              Send campaign
             </Button>
           </span>
         </div>
