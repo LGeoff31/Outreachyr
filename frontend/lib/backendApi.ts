@@ -5,7 +5,15 @@ export function serverBackendBaseUrl(requestOrigin?: string): string {
 
   if (requestOrigin) {
     const origin = new URL(requestOrigin).origin;
-    if (!origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+    const hostname = new URL(origin).hostname;
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1" ||
+      hostname === "::";
+
+    if (!isLocalHost) {
       return `${origin}/_/backend`;
     }
   }
