@@ -1,0 +1,131 @@
+name: outreachyr-dev
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    command:
+      - uv
+      - run
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - ${BACKEND_PORT:?Set BACKEND_PORT in .env}
+      - --reload
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      BACKEND_PORT: ${BACKEND_PORT:?Set BACKEND_PORT in .env}
+      BILLING_ADMIN_EMAILS: ${BILLING_ADMIN_EMAILS:?Set BILLING_ADMIN_EMAILS in .env}
+      CRON_SECRET: ${CRON_SECRET?Set CRON_SECRET in .env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}
+      FRONTEND_PORT: ${FRONTEND_PORT:?Set FRONTEND_PORT in .env}
+      FRONTEND_URL: http://localhost:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID in .env}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET in .env}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:?Set SERPAPI_API_KEY in .env}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY?Set STRIPE_SECRET_KEY in .env}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET?Set STRIPE_WEBHOOK_SECRET in .env}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY in .env}
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
+      UV_LINK_MODE: copy
+      UV_PROJECT_ENVIRONMENT: /opt/outreachyr-venv
+    ports:
+      - "${BACKEND_PORT:?Set BACKEND_PORT in .env}:${BACKEND_PORT:?Set BACKEND_PORT in .env}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c 'import os, urllib.request; urllib.request.urlopen("http://127.0.0.1:%s/health" % os.environ["BACKEND_PORT"], timeout=2).read()'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    develop:
+      watch:
+        - action: rebuild
+          path: backend/pyproject.toml
+        - action: rebuild
+          path: backend/uv.lock
+        - action: sync
+          path: backend
+          target: /workspace/backend
+          initial_sync: true
+          ignore:
+            - .env
+            - .venv/
+            - .venv-*/
+            - .uv-cache/
+            - __pycache__/
+            - "**/__pycache__/"
+            - "*.pyc"
+            - data/
+            - pyproject.toml
+            - uv.lock
+    networks:
+      - app
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.dev
+    command:
+      - npm
+      - exec
+      - --
+      - next
+      - dev
+      - --hostname
+      - 0.0.0.0
+      - --port
+      - ${FRONTEND_PORT:?Set FRONTEND_PORT in .env}
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      FRONTEND_PORT: ${FRONTEND_PORT:?Set FRONTEND_PORT in .env}
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL?Set NEXT_PUBLIC_CONTACT_EMAIL in .env}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY in .env}
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
+      OUTREACH_API_URL: http://backend:${BACKEND_PORT:?Set BACKEND_PORT in .env}
+      RESEND_API_KEY: ${RESEND_API_KEY?Set RESEND_API_KEY in .env}
+      RESEND_FROM: ${RESEND_FROM?Set RESEND_FROM in .env}
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e 'fetch("http://127.0.0.1:" + process.env.FRONTEND_PORT).then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    develop:
+      watch:
+        - action: rebuild
+          path: frontend/package.json
+        - action: rebuild
+          path: frontend/package-lock.json
+        - action: sync
+          path: frontend
+          target: /workspace/frontend
+          initial_sync: true
+          ignore:
+            - .env
+            - node_modules/
+            - .next/
+            - out/
+            - tsconfig.tsbuildinfo
+            - package.json
+            - package-lock.json
+    networks:
+      - app
+
+networks:
+  app:

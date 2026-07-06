@@ -96,7 +96,7 @@ function LoginInner() {
         : err === "missing_code"
           ? "Google did not return a login code. Try again."
           : err === "supabase_config"
-            ? "Supabase Auth is not configured for this frontend."
+            ? "Supabase Auth is not configured. Check the root .env."
             : err === "gmail_token"
               ? "Google did not return Gmail offline access. Revoke app access under Google Account permissions, then sign in again."
               : err === "google_backend_config"
@@ -157,15 +157,15 @@ function LoginInner() {
           ) : null}
           {!supabaseConfigured ? (
             <p className="text-sm text-muted-foreground">
-              Supabase Auth is not configured for this frontend. Add{" "}
+              Supabase Auth is not configured. Add{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                NEXT_PUBLIC_SUPABASE_URL
+                SUPABASE_URL
               </code>{" "}
               and{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+                SUPABASE_PUBLISHABLE_KEY
               </code>{" "}
-              to your frontend{" "}
+              to the root{" "}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code>
               .
             </p>

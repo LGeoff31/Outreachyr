@@ -507,7 +507,7 @@ def _send_campaign(
             "code": "google_backend_config",
             "error": (
                 "Server is not configured for Google sign-in. "
-                "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the backend .env."
+                "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the root .env."
             ),
         },
     )
