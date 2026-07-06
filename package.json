@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "dev:backend": "node scripts/dev.mjs --only backend",
-    "dev:frontend": "node scripts/dev.mjs --only frontend"
+    "dev": "docker compose up --build --watch",
+    "dev:backend": "docker compose up --build --watch backend",
+    "dev:frontend": "docker compose up --build --watch --no-deps frontend"
   }
 }

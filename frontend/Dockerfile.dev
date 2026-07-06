@@ -1,0 +1,11 @@
+FROM node:22-alpine
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /workspace/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+
+CMD ["sh", "-c", "npm exec -- next dev --hostname 0.0.0.0 --port ${FRONTEND_PORT:?Set FRONTEND_PORT}"]

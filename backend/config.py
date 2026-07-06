@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def load_dotenv() -> None:
-    """Load env vars from backend, repo-root, and frontend `.env` files."""
+    """Load env vars from the repo-root `.env` file for direct backend commands."""
     backend_dir = Path(__file__).resolve().parent
     repo_root = backend_dir.parent
 
@@ -19,11 +19,7 @@ def load_dotenv() -> None:
             if k and k not in os.environ:
                 os.environ[k] = v
 
-    frontend_dir = repo_root / "frontend"
-
-    ingest(backend_dir / ".env")
     ingest(repo_root / ".env")
-    ingest(frontend_dir / ".env")
 
 
 def required_env(name: str) -> str:
@@ -55,20 +51,11 @@ def google_oauth_configured() -> bool:
 
 
 def supabase_url() -> str:
-    return (
-        os.environ.get("SUPABASE_URL", "").strip()
-        or os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "").strip()
-        or required_env("SUPABASE_URL")
-    )
+    return required_env("SUPABASE_URL")
 
 
 def supabase_publishable_key() -> str:
-    return (
-        os.environ.get("SUPABASE_PUBLISHABLE_KEY", "").strip()
-        or os.environ.get("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "").strip()
-        or os.environ.get("SUPABASE_ANON_KEY", "").strip()
-        or required_env("SUPABASE_PUBLISHABLE_KEY")
-    )
+    return required_env("SUPABASE_PUBLISHABLE_KEY")
 
 
 def supabase_auth_configured() -> bool:
