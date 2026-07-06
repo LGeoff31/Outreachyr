@@ -24,6 +24,14 @@ import {
 } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
+function oauthCallbackOrigin() {
+  const url = new URL(window.location.href);
+  if (url.hostname === "0.0.0.0" || url.hostname === "::") {
+    url.hostname = "localhost";
+  }
+  return url.origin;
+}
+
 function GoogleLogo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false" {...props}>
@@ -121,7 +129,7 @@ function LoginInner() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${oauthCallbackOrigin()}/auth/callback`,
           scopes: GOOGLE_OAUTH_SCOPES,
           queryParams: {
             access_type: "offline",

@@ -36,7 +36,7 @@ services:
       UV_LINK_MODE: copy
       UV_PROJECT_ENVIRONMENT: /opt/outreachyr-venv
     ports:
-      - "${BACKEND_PORT:?Set BACKEND_PORT in .env}:${BACKEND_PORT:?Set BACKEND_PORT in .env}"
+      - "127.0.0.1:${BACKEND_PORT:?Set BACKEND_PORT in .env}:${BACKEND_PORT:?Set BACKEND_PORT in .env}"
     healthcheck:
       test:
         - CMD-SHELL
@@ -97,7 +97,7 @@ services:
       RESEND_FROM: ${RESEND_FROM?Set RESEND_FROM in .env}
       WATCHPACK_POLLING: "true"
     ports:
-      - "${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}"
+      - "127.0.0.1:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}:${FRONTEND_PORT:?Set FRONTEND_PORT in .env}"
     healthcheck:
       test:
         - CMD-SHELL
