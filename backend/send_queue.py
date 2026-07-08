@@ -8,7 +8,7 @@ import logging
 import random
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from email import message_from_bytes
 from email.message import EmailMessage
 
