@@ -5,7 +5,6 @@ import os
 import secrets
 import uuid
 from contextlib import asynccontextmanager
-from email.message import EmailMessage
 from pathlib import Path
 
 from fastapi import Cookie, FastAPI, File, Form, Request, UploadFile
@@ -27,8 +26,6 @@ from config import (
     google_oauth_configured,
     load_dotenv,
     supabase_auth_configured,
-    supabase_publishable_key,
-    supabase_url,
 )
 from database import make_engine
 from gmail_send_oauth import ensure_fresh_access_token, send_messages_oauth
@@ -652,11 +649,12 @@ class GoogleSessionRequest(BaseModel):
 @app.get("/")
 def root():
     """FastAPI is API-only; run the Next.js app from `frontend/`."""
+    frontend_url = frontend_base_url()
     return {
         "service": "Outreach API",
         "docs": "/docs",
         "health": "/health",
-        "frontend": "cd ../frontend && npm run dev -> http://localhost:3000",
+        "frontend": f"cd ../frontend && npm run dev -> {frontend_url}",
     }
 
 

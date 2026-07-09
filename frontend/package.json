@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port ${FRONTEND_PORT:?Set FRONTEND_PORT}",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

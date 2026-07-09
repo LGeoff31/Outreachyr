@@ -4,7 +4,10 @@ import { NextResponse } from "next/server";
 
 import { serverBackendBaseUrl } from "@/lib/backendApi";
 import { loginErrorUrl, POST_LOGIN_COOKIE, resolvePostLoginPath } from "@/lib/safeNextPath";
-import { getSupabaseEnv } from "@/lib/supabase/server";
+import {
+  getSupabaseEnv,
+  supabaseServerFetchOptions,
+} from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +77,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const supabase = createServerClient(env.url, env.key, {
+  const supabase = createServerClient(env.publicUrl, env.key, {
+    ...supabaseServerFetchOptions(env),
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -66,10 +66,10 @@ def supabase_auth_configured() -> bool:
 
 
 def frontend_base_url() -> str:
-    return os.environ.get(
-        "FRONTEND_URL",
-        os.environ.get("PUBLIC_APP_URL", "http://localhost:3000"),
-    ).rstrip("/")
+    configured_url = os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL")
+    if configured_url:
+        return configured_url.rstrip("/")
+    return f"http://localhost:{required_env('FRONTEND_PORT')}"
 
 
 def google_redirect_uri() -> str:
@@ -80,5 +80,5 @@ def google_redirect_uri() -> str:
 
 
 def frontend_origins() -> list[str]:
-    raw = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")
+    raw = os.environ.get("FRONTEND_ORIGIN", frontend_base_url())
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]

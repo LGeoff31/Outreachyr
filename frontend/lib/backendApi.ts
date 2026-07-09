@@ -18,5 +18,10 @@ export function serverBackendBaseUrl(requestOrigin?: string): string {
     }
   }
 
-  return "http://127.0.0.1:5050";
+  const backendPort = process.env.BACKEND_PORT?.trim();
+  if (!backendPort) {
+    throw new Error("Set OUTREACH_API_URL or BACKEND_PORT for backend API access.");
+  }
+
+  return `http://127.0.0.1:${backendPort}`;
 }

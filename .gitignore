@@ -1,4 +1,5 @@
 /.env
+/node_modules/
 /backend/.env
 .mail_password
 /backend/.mail_password
@@ -21,3 +22,7 @@ frontend/.env
 
 # OAuth session store (local dev)
 /backend/data/
+
+# Supabase local state
+/supabase/.branches/
+/supabase/.temp/
