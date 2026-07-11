@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+# config
+
 
 def load_dotenv() -> None:
     """Load env vars from the repo-root `.env` file for direct backend commands."""
@@ -66,7 +68,8 @@ def supabase_auth_configured() -> bool:
 
 
 def frontend_base_url() -> str:
-    configured_url = os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL")
+    configured_url = os.environ.get(
+        "FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL")
     if configured_url:
         return configured_url.rstrip("/")
     return f"http://localhost:{required_env('FRONTEND_PORT')}"
