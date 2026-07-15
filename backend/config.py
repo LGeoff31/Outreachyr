@@ -82,6 +82,25 @@ def google_redirect_uri() -> str:
     )
 
 
+def google_mail_client_id() -> str:
+    return os.environ.get("GOOGLE_MAIL_CLIENT_ID", "").strip() or required_env("GOOGLE_CLIENT_ID")
+
+
+def google_mail_client_secret() -> str:
+    return os.environ.get("GOOGLE_MAIL_CLIENT_SECRET", "").strip() or required_env("GOOGLE_CLIENT_SECRET")
+
+
+def google_mail_redirect_uri() -> str:
+    return os.environ.get(
+        "GOOGLE_MAIL_REDIRECT_URI",
+        f"{frontend_base_url()}/api/mail-connections/google/callback",
+    )
+
+
+def mailbox_credential_keys() -> str:
+    return required_env("MAILBOX_CREDENTIAL_KEYS")
+
+
 def frontend_origins() -> list[str]:
     raw = os.environ.get("FRONTEND_ORIGIN", frontend_base_url())
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
