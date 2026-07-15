@@ -30,6 +30,24 @@ class FrontendUrlConfigTests(unittest.TestCase):
                 "http://localhost:4123/api/auth/google/callback",
             )
 
+    def test_microsoft_mail_config_defaults_to_common(self) -> None:
+        env = {
+            "MICROSOFT_MAIL_CLIENT_ID": "client",
+            "MICROSOFT_MAIL_CLIENT_SECRET": "secret",
+            "MICROSOFT_MAIL_REDIRECT_URI": "http://localhost:3000/api/mail-connections/microsoft/callback",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            cfg = config.microsoft_mail_config()
+        self.assertEqual(cfg.tenant, "common")
+        self.assertEqual(cfg.client_id, "client")
+
+    def test_microsoft_mail_config_rejects_partial_configuration(self) -> None:
+        with patch.dict(
+            "os.environ", {"MICROSOFT_MAIL_CLIENT_ID": "client"}, clear=True
+        ):
+            with self.assertRaisesRegex(RuntimeError, "MICROSOFT_MAIL_CLIENT_SECRET"):
+                config.microsoft_mail_config()
+
 
 if __name__ == "__main__":
     unittest.main()

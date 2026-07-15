@@ -14,6 +14,7 @@ ProviderCredentialPayload: TypeAlias = dict[str, JSONValue]
 
 class MailProvider(str, Enum):
     GOOGLE = "google"
+    MICROSOFT = "microsoft"
 
 
 class MailCapability(str, Enum):

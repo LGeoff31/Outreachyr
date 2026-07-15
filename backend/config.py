@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 # config
@@ -68,8 +69,7 @@ def supabase_auth_configured() -> bool:
 
 
 def frontend_base_url() -> str:
-    configured_url = os.environ.get(
-        "FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL")
+    configured_url = os.environ.get("FRONTEND_URL") or os.environ.get("PUBLIC_APP_URL")
     if configured_url:
         return configured_url.rstrip("/")
     return f"http://localhost:{required_env('FRONTEND_PORT')}"
@@ -83,11 +83,15 @@ def google_redirect_uri() -> str:
 
 
 def google_mail_client_id() -> str:
-    return os.environ.get("GOOGLE_MAIL_CLIENT_ID", "").strip() or required_env("GOOGLE_CLIENT_ID")
+    return os.environ.get("GOOGLE_MAIL_CLIENT_ID", "").strip() or required_env(
+        "GOOGLE_CLIENT_ID"
+    )
 
 
 def google_mail_client_secret() -> str:
-    return os.environ.get("GOOGLE_MAIL_CLIENT_SECRET", "").strip() or required_env("GOOGLE_CLIENT_SECRET")
+    return os.environ.get("GOOGLE_MAIL_CLIENT_SECRET", "").strip() or required_env(
+        "GOOGLE_CLIENT_SECRET"
+    )
 
 
 def google_mail_redirect_uri() -> str:
@@ -99,6 +103,42 @@ def google_mail_redirect_uri() -> str:
 
 def mailbox_credential_keys() -> str:
     return required_env("MAILBOX_CREDENTIAL_KEYS")
+
+
+@dataclass(frozen=True)
+class MicrosoftMailConfig:
+    client_id: str
+    client_secret: str
+    redirect_uri: str
+    tenant: str
+
+
+def microsoft_mail_config() -> MicrosoftMailConfig:
+    names = (
+        "MICROSOFT_MAIL_CLIENT_ID",
+        "MICROSOFT_MAIL_CLIENT_SECRET",
+        "MICROSOFT_MAIL_REDIRECT_URI",
+    )
+    values = {name: os.environ.get(name, "").strip() for name in names}
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variable: " + ", ".join(missing)
+        )
+    tenant = os.environ.get("MICROSOFT_MAIL_TENANT", "common").strip() or "common"
+    if any(ch.isspace() or ch in "/?#:&" for ch in tenant):
+        raise RuntimeError("Invalid MICROSOFT_MAIL_TENANT")
+    redirect = values["MICROSOFT_MAIL_REDIRECT_URI"]
+    if not redirect.startswith("https://") and not redirect.startswith(
+        "http://localhost"
+    ):
+        raise RuntimeError("MICROSOFT_MAIL_REDIRECT_URI must use HTTPS or localhost")
+    return MicrosoftMailConfig(
+        client_id=values["MICROSOFT_MAIL_CLIENT_ID"],
+        client_secret=values["MICROSOFT_MAIL_CLIENT_SECRET"],
+        redirect_uri=redirect,
+        tenant=tenant,
+    )
 
 
 def frontend_origins() -> list[str]:
