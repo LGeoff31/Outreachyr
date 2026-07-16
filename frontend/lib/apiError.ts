@@ -1,6 +1,12 @@
 export type ApiErrorBody = {
   ok?: boolean;
-  error?: string;
+  error?:
+    | string
+    | {
+        code?: string;
+        message?: string;
+        retryable?: boolean;
+      };
   code?: string;
   detail?: string;
   auth_required?: boolean;
@@ -24,7 +30,22 @@ export function apiErrorMessage(
   text: string,
   fallback: string
 ): string {
-  return data?.error?.trim() || text.trim() || fallback;
+  const error = data?.error;
+  const message =
+    typeof error === "string" ? error.trim() : error?.message?.trim();
+  return message || data?.detail?.trim() || text.trim() || fallback;
+}
+
+export function apiErrorCode(data: ApiErrorBody | null): string | undefined {
+  return typeof data?.error === "object"
+    ? data.error.code ?? data.code
+    : data?.code;
+}
+
+export function apiErrorRetryable(
+  data: ApiErrorBody | null
+): boolean | undefined {
+  return typeof data?.error === "object" ? data.error.retryable : undefined;
 }
 
 /** Next.js rewrite failed before the FastAPI handler returned JSON (backend down, reset, etc.). */
@@ -82,7 +103,8 @@ export function formatApiDiagnostics(input: {
   const parts: string[] = [];
   if (input.context) parts.push(input.context);
   parts.push(`HTTP ${input.status}`);
-  if (input.data?.code) parts.push(`code=${input.data.code}`);
+  const code = apiErrorCode(input.data);
+  if (code) parts.push(`code=${code}`);
   if (input.data?.detail) parts.push(input.data.detail);
   if (!input.data?.error && input.text && input.text.length < 240) {
     parts.push(input.text.replace(/\s+/g, " ").trim());

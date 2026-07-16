@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
+import { apiAuthHeaders } from "@/lib/authHeaders";
 
 export type EmailTemplateRow = {
   id: string;
@@ -11,14 +11,7 @@ export type EmailTemplateRow = {
 };
 
 export async function templateApiAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error("Not signed in");
-  }
-  return { Authorization: `Bearer ${session.access_token}` };
+  return apiAuthHeaders();
 }
 
 export async function fetchEmailTemplateRows(): Promise<{

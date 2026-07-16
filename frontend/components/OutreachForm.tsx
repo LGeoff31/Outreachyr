@@ -56,6 +56,7 @@ import { AutosizeTextarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   apiErrorMessage,
+  apiErrorCode,
   backendUnreachableMessage,
   isBackendProxyFailure,
   readApiResponse,
@@ -70,10 +71,10 @@ import {
 } from "@/lib/billing";
 import { CompanySelect } from "@/components/CompanySelect";
 import { CampaignUnlockRequired } from "@/components/CampaignUnlockRequired";
-import {
-  diagnoseGmailSendFailure,
-  syncGmailSendSession,
-} from "@/lib/gmailSession";
+import { useMailConnections } from "@/components/mail-connections/MailConnectionsProvider";
+import { apiAuthHeaders } from "@/lib/authHeaders";
+import { resolveMailConnectionSendError } from "@/lib/mail-connections/errors";
+import { appendMailConnectionId } from "@/lib/mail-connections/sendForm";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   fetchCampaignDetail,
@@ -82,7 +83,6 @@ import {
 import { fetchEmailTemplateRows } from "@/lib/supabase/emailTemplates";
 import {
   fetchUserResumeRows,
-  resumeApiAuthHeaders,
   type UserResumeRow,
 } from "@/lib/supabase/userResumes";
 
@@ -102,7 +102,6 @@ type SendResponse = ApiErrorBody & {
   count?: number;
   recipients?: Recipient[];
   sent?: number;
-  queued?: boolean;
   billing?: BillingStatus;
   code?: string;
 };
@@ -128,6 +127,14 @@ Your name`;
 
 export function OutreachForm() {
   const searchParams = useSearchParams();
+  const {
+    usableConnections,
+    selectedConnection,
+    selectedConnectionId,
+    setSelectedConnectionId,
+    reload: reloadMailConnections,
+    loading: mailConnectionsLoading,
+  } = useMailConnections();
   const campaignFromUrl = searchParams.get("campaign")?.trim() || null;
   const templateFromUrl = searchParams.get("template")?.trim() || null;
   const resumeFromUrl = searchParams.get("resume")?.trim() || null;
@@ -153,10 +160,10 @@ export function OutreachForm() {
     useState<RecipientRemovalTarget | null>(null);
   const [message, setMessage] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
-  const [sendQueued, setSendQueued] = useState(false);
   const [celebrateSend, setCelebrateSend] = useState(0);
   const sendButtonWrapRef = useRef<HTMLSpanElement>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [sendingAccountError, setSendingAccountError] = useState(false);
   const [err, setErr] = useState(false);
   const [loading, setLoading] = useState<"preview" | "send" | null>(null);
   const [sendInFlight, setSendInFlight] = useState(false);
@@ -186,10 +193,6 @@ export function OutreachForm() {
     void fetchBillingStatus()
       .then(setBillingStatus)
       .finally(() => setBillingLoading(false));
-  }, []);
-
-  useEffect(() => {
-    void syncGmailSendSession();
   }, []);
 
   useEffect(() => {
@@ -272,7 +275,7 @@ export function OutreachForm() {
       try {
         const res = await fetch(
           `/api/campaigns/${encodeURIComponent(campaignId)}/resume`,
-          { headers: await resumeApiAuthHeaders() }
+          { headers: await apiAuthHeaders() }
         );
         if (!res.ok) {
           const text = await res.text();
@@ -495,19 +498,24 @@ export function OutreachForm() {
     recipients.length > 0 &&
     loading === null &&
     !sendInFlight &&
-    !billingBlocked;
+    !billingBlocked &&
+    Boolean(selectedConnection);
   const sendBlockedReason =
     canSend || isSending
       ? undefined
       : billingBlocked
         ? "Pay $5 once to unlock more campaigns."
-        : loading === "preview"
-          ? "Wait for recruiter search to finish."
-          : recipients.length === 0
-            ? testMode
-              ? "Add at least one valid test email address."
-              : "Fetch recruiters first."
-            : undefined;
+        : mailConnectionsLoading
+          ? "Wait for sending accounts to load."
+          : !selectedConnection
+            ? "Connect a sending account before sending."
+            : loading === "preview"
+              ? "Wait for recruiter search to finish."
+              : recipients.length === 0
+                ? testMode
+                  ? "Add at least one valid test email address."
+                  : "Fetch recruiters first."
+                : undefined;
   const companyInvalid = err && !companyReady;
   const selectedSavedResume = useMemo(
     () =>
@@ -533,6 +541,7 @@ export function OutreachForm() {
     setTestEmails([]);
     setErr(false);
     setErrorDetails(null);
+    setSendingAccountError(false);
 
     const defaultRow = savedResumes.find((r) => r.is_default);
     if (defaultRow) {
@@ -610,7 +619,6 @@ export function OutreachForm() {
       setRecipients(nextRecipients);
     }
     setSendSuccess(false);
-    setSendQueued(false);
     setErr(false);
     setErrorDetails(null);
     setMessage("");
@@ -639,17 +647,23 @@ export function OutreachForm() {
         return;
       }
 
+      if (!dryRun && !selectedConnectionId) {
+        setErr(true);
+        setSendingAccountError(true);
+        setMessage("Connect a sending account before sending this campaign.");
+        setErrorDetails(
+          "Choose a connected mailbox from Sending Accounts, then try again."
+        );
+        return;
+      }
+
       setLoading(dryRun ? "preview" : "send");
       setSendInFlight(!dryRun);
       setErr(false);
       setSendSuccess(false);
-      setSendQueued(false);
       setErrorDetails(null);
+      setSendingAccountError(false);
       setMessage(dryRun ? "Finding recruiters..." : "Sending campaign...");
-
-      if (!dryRun) {
-        await syncGmailSendSession();
-      }
 
       const recipientsForSend = recipients;
 
@@ -659,6 +673,7 @@ export function OutreachForm() {
       fd.append("test_mode", testMode ? "true" : "false");
       fd.append("subject", subject);
       fd.append("body_text", bodyText);
+      appendMailConnectionId(fd, selectedConnectionId, dryRun);
       if (!dryRun && recipientsForSend.length > 0) {
         fd.append("selected_recipients", JSON.stringify(recipientsForSend));
       }
@@ -690,16 +705,8 @@ export function OutreachForm() {
         );
       }
 
-      let sendHeaders: Record<string, string> = {};
-      if (isSupabaseConfigured()) {
-        try {
-          sendHeaders = await resumeApiAuthHeaders();
-        } catch {
-          /* Gmail send still works with session cookie; DB row needs owner id from cookie or future sign-in */
-        }
-      }
-
       try {
+        const sendHeaders = await apiAuthHeaders();
         const res = await fetch("/api/send", {
           method: "POST",
           body: fd,
@@ -708,6 +715,7 @@ export function OutreachForm() {
         });
         const { data, text } = await readApiResponse(res);
         const payload = data as SendResponse | null;
+        const responseCode = apiErrorCode(payload);
 
         if (!payload?.ok) {
           if (isBackendProxyFailure(res.status, payload, text)) {
@@ -753,26 +761,25 @@ export function OutreachForm() {
               "The campaign could not be prepared."
             )
           );
-          if (res.status === 402 || payload?.code === "campaign_limit") {
+          if (res.status === 402 || responseCode === "campaign_limit") {
             if (payload?.billing) setBillingStatus(payload.billing);
             setErr(false);
             setErrorDetails(null);
             setMessage("");
             return;
           }
-          if (res.status === 401 || payload?.auth_required) {
-            setErrorDetails(
-              await diagnoseGmailSendFailure({
-                sendStatus: res.status,
-                sendData: payload,
-                sendText: text,
-              })
-            );
+          const mailGuidance = await resolveMailConnectionSendError(
+            responseCode,
+            reloadMailConnections
+          );
+          if (mailGuidance) {
+            setSendingAccountError(mailGuidance.manageAccounts);
+            setErrorDetails(mailGuidance.message);
           } else {
             setErrorDetails(
               [
                 `HTTP ${res.status}`,
-                payload?.code ? `code=${payload.code}` : null,
+                responseCode ? `code=${responseCode}` : null,
                 payload?.detail ?? null,
                 !payload?.error && text ? text.slice(0, 180) : null,
               ]
@@ -798,7 +805,7 @@ export function OutreachForm() {
           const recipientCount = payload.sent ?? payload.count ?? 0;
           setRecipients([]);
           setSendSuccess(true);
-          setSendQueued(false);
+          setSendingAccountError(false);
           setCelebrateSend((n) => n + 1);
           if (payload.billing) {
             setBillingStatus(payload.billing);
@@ -840,8 +847,10 @@ export function OutreachForm() {
       companyReady,
       file,
       recipients,
+      reloadMailConnections,
       savedResumes,
       selectedSavedResumeId,
+      selectedConnectionId,
       subject,
       testMode,
       resetFormFields,
@@ -1090,8 +1099,8 @@ export function OutreachForm() {
             err={err}
             message={message}
             errorDetails={errorDetails}
+            sendingAccountError={sendingAccountError}
             sendSuccess={sendSuccess}
-            sendQueued={sendQueued}
           />
         </div>
       </div>
@@ -1101,7 +1110,7 @@ export function OutreachForm() {
         className="border-t border-border bg-background/95 backdrop-blur-xl lg:fixed lg:bottom-0 lg:left-56 lg:right-0 lg:z-30"
       >
         <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-3 px-5 py-3 sm:px-8 lg:min-h-16 lg:flex-row lg:items-center lg:justify-between lg:px-10 lg:py-2">
-          <div className="flex shrink-0 items-center">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
             {loading === "preview" ? (
               <p className="flex items-center gap-2 whitespace-nowrap text-sm text-muted-foreground">
                 <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
@@ -1112,6 +1121,46 @@ export function OutreachForm() {
                 {recipients.length} found
               </p>
             ) : null}
+
+            {mailConnectionsLoading ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Loading sending accounts…
+              </p>
+            ) : usableConnections.length > 1 ? (
+              <label className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                <span className="shrink-0">Send from</span>
+                <select
+                  value={selectedConnectionId ?? ""}
+                  onChange={(event) =>
+                    setSelectedConnectionId(event.target.value)
+                  }
+                  className="h-9 max-w-72 min-w-0 rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+                  aria-label="Sending account"
+                >
+                  {usableConnections.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.email}
+                      {connection.is_default ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : selectedConnection ? (
+              <p className="min-w-0 truncate text-sm text-muted-foreground">
+                Send from{" "}
+                <span className="font-medium text-foreground">
+                  {selectedConnection.email}
+                </span>
+              </p>
+            ) : (
+              <Link
+                href="/dashboard/settings/sending-accounts"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Connect a sending account
+              </Link>
+            )}
           </div>
 
           <span
@@ -1497,8 +1546,8 @@ function ReviewPanel({
   err,
   message,
   errorDetails,
+  sendingAccountError = false,
   sendSuccess = false,
-  sendQueued = false,
   actionsLocked = false,
 }: {
   recipients: Recipient[];
@@ -1515,8 +1564,8 @@ function ReviewPanel({
   err: boolean;
   message: string;
   errorDetails: string | null;
+  sendingAccountError?: boolean;
   sendSuccess?: boolean;
-  sendQueued?: boolean;
   actionsLocked?: boolean;
 }) {
   const [fullPreview, setFullPreview] = useState<Recipient | null>(null);
@@ -1753,7 +1802,17 @@ function ReviewPanel({
                 )}
               >
                 {message}
-                {err && errorDetails ? (
+                {err && errorDetails && sendingAccountError ? (
+                  <span className="mt-2 block text-sm leading-relaxed text-destructive/90">
+                    {errorDetails}{" "}
+                    <Link
+                      href="/dashboard/settings/sending-accounts"
+                      className="font-medium underline underline-offset-4"
+                    >
+                      Manage sending accounts
+                    </Link>
+                  </span>
+                ) : err && errorDetails ? (
                   <span className="mt-2 block break-all font-mono text-xs leading-relaxed text-destructive/90">
                     {errorDetails}
                   </span>
@@ -2056,9 +2115,9 @@ function isNoRecruitersDiscoveryError(
   payload: SendResponse | null,
   text: string
 ) {
-  const message = `${payload?.error ?? ""} ${text}`.toLowerCase();
+  const message = apiErrorMessage(payload, text, "").toLowerCase();
   return (
-    payload?.code === "no_recruiters_found" ||
+    apiErrorCode(payload) === "no_recruiters_found" ||
     message.includes("hasn't returned any results") ||
     message.includes("has not returned any results") ||
     message.includes("no addresses inferred") ||
