@@ -7,6 +7,13 @@ describe("enabledMailProviders", () => {
     expect(enabledMailProviders(["google", "unregistered"])).toEqual([
       expect.objectContaining({ id: "google" }),
     ]);
+    expect(enabledMailProviders(["microsoft"])).toEqual([
+      expect.objectContaining({
+        id: "microsoft",
+        displayName: "Outlook / Microsoft 365",
+        connectLabel: "Connect Outlook",
+      }),
+    ]);
     expect(enabledMailProviders([])).toEqual([]);
   });
 });

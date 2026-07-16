@@ -77,6 +77,22 @@ In production, replace the origin with the public frontend origin. Keep old
 vault keys after the active key (comma-separated) during key rotation so
 existing sending-account credentials remain decryptable.
 
+Outlook / Microsoft 365 sending is optional. Create a Microsoft Entra app
+registration with delegated `User.Read` and `Mail.Send` permissions, create a
+client secret, and set `MICROSOFT_MAIL_CLIENT_ID` and
+`MICROSOFT_MAIL_CLIENT_SECRET`. The consent flow also requests
+`offline_access` so sending-account access can be refreshed. Register this web
+redirect URI:
+
+```text
+http://localhost:${FRONTEND_PORT}/api/mail-connections/microsoft/callback
+```
+
+The tenant defaults to `common`, and the redirect URI defaults to the public
+frontend origin shown above. Override them with `MICROSOFT_MAIL_TENANT` and
+`MICROSOFT_MAIL_REDIRECT_URI` when needed. In production, use the public HTTPS
+frontend origin.
+
 ## Backend commands
 
 ```sh

@@ -1,5 +1,7 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # config
 
@@ -82,6 +84,51 @@ def google_mail_redirect_uri() -> str:
 
 def mailbox_credential_keys() -> str:
     return required_env("MAILBOX_CREDENTIAL_KEYS")
+
+
+@dataclass(frozen=True)
+class MicrosoftMailConfig:
+    client_id: str
+    client_secret: str
+    redirect_uri: str
+    tenant: str
+
+
+def microsoft_mail_configured() -> bool:
+    """Return whether Microsoft mail credentials were intentionally configured."""
+    return bool(
+        os.environ.get("MICROSOFT_MAIL_CLIENT_ID", "").strip()
+        or os.environ.get("MICROSOFT_MAIL_CLIENT_SECRET", "").strip()
+    )
+
+
+def microsoft_mail_config() -> MicrosoftMailConfig:
+    names = ("MICROSOFT_MAIL_CLIENT_ID", "MICROSOFT_MAIL_CLIENT_SECRET")
+    values = {name: os.environ.get(name, "").strip() for name in names}
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variable: " + ", ".join(missing)
+        )
+    tenant = os.environ.get("MICROSOFT_MAIL_TENANT", "common").strip() or "common"
+    if any(ch.isspace() or ch in "/?#:&" for ch in tenant):
+        raise RuntimeError("Invalid MICROSOFT_MAIL_TENANT")
+    redirect = os.environ.get("MICROSOFT_MAIL_REDIRECT_URI", "").strip() or (
+        f"{frontend_base_url()}/api/mail-connections/microsoft/callback"
+    )
+    parsed_redirect = urlsplit(redirect)
+    is_https = parsed_redirect.scheme == "https" and bool(parsed_redirect.netloc)
+    is_localhost = (
+        parsed_redirect.scheme == "http" and parsed_redirect.hostname == "localhost"
+    )
+    if not is_https and not is_localhost:
+        raise RuntimeError("MICROSOFT_MAIL_REDIRECT_URI must use HTTPS or localhost")
+    return MicrosoftMailConfig(
+        client_id=values["MICROSOFT_MAIL_CLIENT_ID"],
+        client_secret=values["MICROSOFT_MAIL_CLIENT_SECRET"],
+        redirect_uri=redirect,
+        tenant=tenant,
+    )
 
 
 def frontend_origins() -> list[str]:

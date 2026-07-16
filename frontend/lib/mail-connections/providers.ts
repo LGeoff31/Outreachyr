@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import { GoogleLogo } from "@/components/provider-icons/GoogleLogo";
+import { MicrosoftLogo } from "@/components/provider-icons/MicrosoftLogo";
 
 export type MailProviderPresentation = {
   id: string;
@@ -16,6 +17,13 @@ const providers: MailProviderPresentation[] = [
     connectLabel: "Connect Gmail",
     reconnectLabel: "Reconnect Gmail",
     Logo: GoogleLogo,
+  },
+  {
+    id: "microsoft",
+    displayName: "Outlook / Microsoft 365",
+    connectLabel: "Connect Outlook",
+    reconnectLabel: "Reconnect Outlook",
+    Logo: MicrosoftLogo,
   },
 ];
 

@@ -12,12 +12,15 @@ from config import (
     google_mail_redirect_uri,
     load_dotenv,
     mailbox_credential_keys,
+    microsoft_mail_config,
+    microsoft_mail_configured,
 )
 from user_resume_api import get_db_session
 
 from .crypto import CredentialVault
 from .delivery import MailDeliveryService
 from .providers.google import GOOGLE_PROVIDER, GoogleMailboxAdapter
+from .providers.microsoft import MICROSOFT_PROVIDER, MicrosoftGraphAdapter
 from .registry import ProviderDefinition, ProviderRegistry
 from .repository import MailConnectionRepository
 from .service import MailConnectionService
@@ -44,6 +47,24 @@ def build_provider_registry() -> ProviderRegistry:
             credential_revoker=google,
         )
     )
+    if microsoft_mail_configured():
+        microsoft_config = microsoft_mail_config()
+        microsoft = MicrosoftGraphAdapter(
+            client_id=microsoft_config.client_id,
+            client_secret=microsoft_config.client_secret,
+            redirect_uri=microsoft_config.redirect_uri,
+            tenant=microsoft_config.tenant,
+        )
+        registry.register(
+            ProviderDefinition(
+                provider=MICROSOFT_PROVIDER,
+                sender=microsoft,
+                capabilities=frozenset({MailCapability.SEND_MAIL}),
+                oauth_connector=microsoft,
+                credential_refresher=microsoft,
+                credential_revoker=microsoft,
+            )
+        )
     return registry
 
 
