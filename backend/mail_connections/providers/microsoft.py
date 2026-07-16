@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 import httpx
 
 from ..errors import (
+    MailboxAuthorizationFailed,
     MailboxConnectionError,
     MailboxDeliveryUnknown,
     MailboxPermissionDenied,
@@ -21,10 +22,12 @@ from ..types import (
     MailCapability,
     MailboxGrant,
     MailboxIdentity,
-    MailProvider,
     ProviderCredentialPayload,
     SendReceipt,
 )
+
+MICROSOFT_PROVIDER = "microsoft"
+_MICROSOFT_OAUTH_CLIENT = "mail_microsoft"
 
 MICROSOFT_SCOPES = (
     "offline_access",
@@ -90,33 +93,42 @@ class MicrosoftGraphAdapter:
                 "redirect_uri": self.redirect_uri,
                 "grant_type": "authorization_code",
                 "scope": " ".join(MICROSOFT_SCOPES),
-            }
+            },
+            authorization=True,
         )
-        profile_response = self._http.get(
-            "https://graph.microsoft.com/v1.0/me",
-            params={"$select": "id,displayName,mail,userPrincipalName"},
-            headers={"Authorization": f"Bearer {token['access_token']}"},
+        try:
+            profile_response = self._http.get(
+                "https://graph.microsoft.com/v1.0/me",
+                params={"$select": "id,displayName,mail,userPrincipalName"},
+                headers={"Authorization": f"Bearer {token['access_token']}"},
+            )
+        except httpx.HTTPError as exc:
+            raise MailboxTemporaryFailure() from exc
+        self._raise_graph_error(
+            profile_response,
+            send_started=False,
+            authorization=True,
         )
-        self._raise_graph_error(profile_response, send_started=False)
         try:
             profile = profile_response.json()
         except ValueError as exc:
-            raise MailboxConnectionError("microsoft_profile_invalid") from exc
+            raise MailboxAuthorizationFailed() from exc
         account_id = str(profile.get("id") or "").strip()
         address = str(
             profile.get("mail") or profile.get("userPrincipalName") or ""
         ).strip()
         if not account_id or not address:
-            raise MailboxConnectionError("microsoft_profile_invalid")
+            raise MailboxAuthorizationFailed()
         return MailboxGrant(
             identity=MailboxIdentity(
                 account_id,
                 address,
                 str(profile.get("displayName") or "").strip() or None,
             ),
-            credentials=token,
+            credentials={**token, "oauth_client": _MICROSOFT_OAUTH_CLIENT},
             granted_scopes=frozenset(str(token["scope"]).split()),
             capabilities=frozenset({MailCapability.SEND_MAIL}),
+            provider_metadata={"oauth_client": _MICROSOFT_OAUTH_CLIENT},
         )
 
     def refresh_credentials(
@@ -135,11 +147,14 @@ class MicrosoftGraphAdapter:
                 "grant_type": "refresh_token",
                 "refresh_token": refresh,
                 "scope": " ".join(MICROSOFT_SCOPES),
-            }
+            },
+            authorization=False,
         )
-        if not refreshed.get("refresh_token"):
-            refreshed["refresh_token"] = refresh
-        return refreshed
+        return {
+            **credentials,
+            **refreshed,
+            "refresh_token": refreshed.get("refresh_token") or refresh,
+        }
 
     def revoke(self, credentials: ProviderCredentialPayload) -> None:
         return None
@@ -162,34 +177,63 @@ class MicrosoftGraphAdapter:
                 },
                 content=encoded,
             )
-        except httpx.ConnectError as exc:
+        except (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.PoolTimeout,
+        ) as exc:
             raise MailboxTemporaryFailure() from exc
         except (
             httpx.WriteTimeout,
             httpx.ReadTimeout,
             httpx.RemoteProtocolError,
+            httpx.WriteError,
+            httpx.ReadError,
         ) as exc:
             raise MailboxDeliveryUnknown() from exc
+        except httpx.HTTPError as exc:
+            raise MailboxDeliveryUnknown() from exc
         if response.status_code == 202:
-            return SendReceipt(MailProvider.MICROSOFT, True, None)
+            return SendReceipt(MICROSOFT_PROVIDER, True, None)
         self._raise_graph_error(response, send_started=True)
         raise MailboxConnectionError("microsoft_provider_error")
 
-    def _token_request(self, form: dict[str, str]) -> ProviderCredentialPayload:
+    def _token_request(
+        self,
+        form: dict[str, str],
+        *,
+        authorization: bool,
+    ) -> ProviderCredentialPayload:
         try:
             response = self._http.post(self._token_url, data=form)
         except httpx.HTTPError as exc:
             raise MailboxTemporaryFailure() from exc
+        if response.status_code >= 500:
+            raise MailboxTemporaryFailure()
+        if response.status_code == 429:
+            try:
+                retry_after = max(1, int(response.headers.get("Retry-After", "60")))
+            except ValueError:
+                retry_after = 60
+            raise MailboxRateLimited(retry_after)
         try:
             payload = response.json()
         except ValueError as exc:
+            if authorization:
+                raise MailboxAuthorizationFailed() from exc
+            if response.status_code >= 400:
+                raise MailboxReauthRequired() from exc
             raise MailboxConnectionError("microsoft_oauth_invalid_response") from exc
         if response.status_code >= 400:
             code = str(payload.get("error") or "")
             if code in {"invalid_grant", "interaction_required", "consent_required"}:
+                if authorization:
+                    raise MailboxAuthorizationFailed()
                 raise MailboxReauthRequired()
             if code in {"server_error", "temporarily_unavailable"}:
                 raise MailboxTemporaryFailure()
+            if authorization:
+                raise MailboxAuthorizationFailed()
             raise MailboxConnectionError("microsoft_oauth_configuration")
         access = str(payload.get("access_token") or "").strip()
         refresh = str(payload.get("refresh_token") or "").strip()
@@ -197,12 +241,16 @@ class MicrosoftGraphAdapter:
         try:
             expires_in = float(payload.get("expires_in"))
         except (TypeError, ValueError) as exc:
+            if authorization:
+                raise MailboxAuthorizationFailed() from exc
             raise MailboxConnectionError("microsoft_oauth_invalid_response") from exc
         if not access or token_type.lower() != "bearer" or expires_in <= 0:
+            if authorization:
+                raise MailboxAuthorizationFailed()
             raise MailboxConnectionError("microsoft_oauth_invalid_response")
         if form["grant_type"] == "authorization_code" and not refresh:
-            raise MailboxReauthRequired()
-        scopes = str(payload.get("scope") or "")
+            raise MailboxAuthorizationFailed()
+        scopes = str(payload.get("scope") or form.get("scope") or "")
         normalized = {part.rsplit("/", 1)[-1].lower() for part in scopes.split()}
         if not {"user.read", "mail.send"}.issubset(normalized):
             raise MailboxPermissionDenied()
@@ -215,11 +263,18 @@ class MicrosoftGraphAdapter:
         }
 
     @staticmethod
-    def _raise_graph_error(response: httpx.Response, *, send_started: bool) -> None:
+    def _raise_graph_error(
+        response: httpx.Response,
+        *,
+        send_started: bool,
+        authorization: bool = False,
+    ) -> None:
         status = response.status_code
         if status < 400:
             return
         if status == 401:
+            if authorization:
+                raise MailboxAuthorizationFailed()
             raise MailboxReauthRequired()
         if status == 403:
             raise MailboxPermissionDenied()
@@ -236,5 +291,9 @@ class MicrosoftGraphAdapter:
                 raise MailboxDeliveryUnknown()
             raise MailboxTemporaryFailure()
         if status == 400:
+            if authorization:
+                raise MailboxAuthorizationFailed()
             raise MailboxConnectionError("microsoft_message_rejected")
+        if authorization:
+            raise MailboxAuthorizationFailed()
         raise MailboxConnectionError("microsoft_provider_error")

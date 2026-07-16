@@ -13,7 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { GOOGLE_OAUTH_SCOPES, safeNextPath } from "@/lib/auth";
+import {
+  GOOGLE_OAUTH_SCOPES,
+  loginErrorMessage,
+  safeNextPath,
+} from "@/lib/auth";
 import {
   DEFAULT_POST_LOGIN_PATH,
   setPostLoginRedirectClient,
@@ -96,30 +100,7 @@ function LoginInner() {
     };
   }, [router, supabaseConfigured, next]);
 
-  const errorMessage =
-    err === "access_denied"
-      ? "Google sign-in was canceled."
-      : err === "invalid_state"
-        ? "Login session expired. Try again."
-        : err === "missing_code"
-          ? "Google did not return a login code. Try again."
-          : err === "supabase_config"
-            ? "Supabase Auth is not configured. Check the root .env."
-            : err === "gmail_token"
-              ? "Google did not return Gmail offline access. Revoke app access under Google Account permissions, then sign in again."
-              : err === "google_backend_config"
-                ? "The backend is missing Google OAuth credentials."
-                : err === "supabase_backend_config"
-                  ? "The backend is missing Supabase Auth credentials. Restart the backend after adding them."
-                  : err === "supabase_session"
-                    ? "The backend could not verify the Supabase session."
-              : err === "gmail_session"
-                ? "Could not connect the Gmail sending session. Try signing in again."
-                : err === "exchange"
-                  ? "Could not finish Google login. Try again or revoke app access under Google Account permissions and retry."
-                  : err
-                    ? "Something went wrong with Google sign-in."
-                    : null;
+  const errorMessage = loginErrorMessage(err);
 
   async function signInWithGoogle() {
     setStartingLogin(true);
@@ -131,10 +112,6 @@ function LoginInner() {
         options: {
           redirectTo: `${oauthCallbackOrigin()}/auth/callback`,
           scopes: GOOGLE_OAUTH_SCOPES,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
         },
       });
 
@@ -154,7 +131,7 @@ function LoginInner() {
             Welcome back
           </CardTitle>
           <CardDescription className="text-base text-muted-foreground text-center">
-            Sign in with Google to connect your Gmail account.
+            Sign in with Google to access your Outreachyr workspace.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

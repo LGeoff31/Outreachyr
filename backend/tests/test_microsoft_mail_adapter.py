@@ -9,9 +9,17 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from mail_connections.errors import MailboxDeliveryUnknown, MailboxRateLimited
-from mail_connections.providers.microsoft import MicrosoftGraphAdapter
-from mail_connections.types import MailProvider
+from mail_connections.errors import (
+    MailboxAuthorizationFailed,
+    MailboxDeliveryUnknown,
+    MailboxRateLimited,
+    MailboxReauthRequired,
+    MailboxTemporaryFailure,
+)
+from mail_connections.providers.microsoft import (
+    MICROSOFT_PROVIDER,
+    MicrosoftGraphAdapter,
+)
 
 
 class MicrosoftGraphAdapterTests(unittest.TestCase):
@@ -65,6 +73,84 @@ class MicrosoftGraphAdapterTests(unittest.TestCase):
         self.assertEqual(grant.identity.provider_account_id, "ms-user")
         self.assertEqual(grant.identity.email, "sender@outlook.com")
         self.assertEqual(grant.credentials["refresh_token"], "refresh")
+        self.assertEqual(grant.credentials["oauth_client"], "mail_microsoft")
+        self.assertEqual(
+            grant.provider_metadata,
+            {"oauth_client": "mail_microsoft"},
+        )
+
+    def test_refresh_preserves_metadata_and_rotates_refresh_token(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "new-access",
+                    "refresh_token": "new-refresh",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                    "scope": "offline_access User.Read Mail.Send",
+                },
+            )
+
+        refreshed = self._adapter(handler).refresh_credentials(
+            {
+                "access_token": "old-access",
+                "refresh_token": "old-refresh",
+                "expires_at": 0,
+                "oauth_client": "mail_microsoft",
+            }
+        )
+
+        self.assertEqual(refreshed["access_token"], "new-access")
+        self.assertEqual(refreshed["refresh_token"], "new-refresh")
+        self.assertEqual(refreshed["oauth_client"], "mail_microsoft")
+
+    def test_exchange_transport_failure_is_temporary(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host == "login.microsoftonline.com":
+                return httpx.Response(
+                    200,
+                    json={
+                        "access_token": "access",
+                        "refresh_token": "refresh",
+                        "token_type": "Bearer",
+                        "expires_in": 3600,
+                        "scope": "offline_access User.Read Mail.Send",
+                    },
+                )
+            raise httpx.ConnectError("profile unavailable", request=request)
+
+        with self.assertRaises(MailboxTemporaryFailure):
+            self._adapter(handler).exchange_code(
+                code="code",
+                code_verifier="verifier",
+            )
+
+    def test_invalid_grant_distinguishes_authorization_from_refresh(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": "invalid_grant"})
+
+        adapter = self._adapter(handler)
+        with self.assertRaises(MailboxAuthorizationFailed):
+            adapter.exchange_code(code="code", code_verifier="verifier")
+        with self.assertRaises(MailboxReauthRequired):
+            adapter.refresh_credentials(
+                {
+                    "access_token": "expired",
+                    "refresh_token": "refresh",
+                    "expires_at": 0,
+                }
+            )
+
+    def test_non_json_token_server_error_is_temporary(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="temporarily unavailable")
+
+        with self.assertRaises(MailboxTemporaryFailure):
+            self._adapter(handler).exchange_code(
+                code="code",
+                code_verifier="verifier",
+            )
 
     def test_send_uses_standard_base64_mime_and_accepts_only_202(self) -> None:
         captured: list[httpx.Request] = []
@@ -81,7 +167,7 @@ class MicrosoftGraphAdapterTests(unittest.TestCase):
         receipt = self._adapter(handler).send(
             credentials={"access_token": "access"}, message=message
         )
-        self.assertEqual(receipt.provider, MailProvider.MICROSOFT)
+        self.assertEqual(receipt.provider, MICROSOFT_PROVIDER)
         self.assertIsNone(receipt.provider_message_id)
         self.assertEqual(
             base64.b64decode(captured[0].content),

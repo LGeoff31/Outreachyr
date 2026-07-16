@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/client";
+import { apiAuthHeaders } from "@/lib/authHeaders";
 
 export const USER_RESUMES_BUCKET = "resumes";
 
@@ -46,14 +46,7 @@ export type UserResumeRow = {
 
 /** Bearer headers for `/api/user-resumes/*` (exported for preview download). */
 export async function resumeApiAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error("Not signed in");
-  }
-  return { Authorization: `Bearer ${session.access_token}` };
+  return apiAuthHeaders();
 }
 
 export async function fetchUserResumeRows(): Promise<{

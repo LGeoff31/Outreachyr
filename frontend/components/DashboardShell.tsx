@@ -9,6 +9,7 @@ import {
   Mail,
   Plus,
   Send,
+  Settings2,
   UserRound,
 } from "lucide-react";
 
@@ -23,11 +24,16 @@ import {
 } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-type DashboardSection = "Campaigns" | "Resumes";
+type DashboardSection = "Campaigns" | "Resumes" | "Sending accounts";
 
 const primaryNav = [
   { label: "Campaigns", icon: Send, href: "/dashboard" },
   { label: "Resumes", icon: Mail, href: "/dashboard/resumes" },
+  {
+    label: "Sending accounts",
+    icon: Settings2,
+    href: "/dashboard/settings/sending-accounts",
+  },
 ] satisfies Array<{
   label: DashboardSection;
   icon: typeof Send;
@@ -174,6 +180,12 @@ export function DashboardShell({
 }
 
 function activeFromPathname(pathname: string): DashboardSection | null {
+  if (
+    pathname === "/dashboard/settings/sending-accounts" ||
+    pathname.startsWith("/dashboard/settings/sending-accounts/")
+  ) {
+    return "Sending accounts";
+  }
   if (
     pathname === "/dashboard/resumes" ||
     pathname.startsWith("/dashboard/resumes/")

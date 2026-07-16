@@ -6,7 +6,10 @@
     "dev": "next dev --port ${FRONTEND_PORT:?Set FRONTEND_PORT}",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit --incremental false"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -33,6 +36,7 @@
     "eslint-config-next": "15.5.18",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

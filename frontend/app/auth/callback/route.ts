@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { serverBackendBaseUrl } from "@/lib/backendApi";
+import { exchangeIdentityCode } from "@/lib/auth";
 import { loginErrorUrl, POST_LOGIN_COOKIE, resolvePostLoginPath } from "@/lib/safeNextPath";
 import {
   getSupabaseEnv,
@@ -10,41 +10,6 @@ import {
 } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-async function syncGmailSession({
-  accessToken,
-  providerRefreshToken,
-  requestOrigin,
-}: {
-  accessToken: string;
-  providerRefreshToken: string;
-  requestOrigin: string;
-}) {
-  const response = await fetch(
-    `${serverBackendBaseUrl(requestOrigin)}/api/auth/google/session`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        access_token: accessToken,
-        provider_refresh_token: providerRefreshToken,
-      }),
-    }
-  );
-  const data = (await response.json().catch(() => null)) as {
-    code?: string;
-  } | null;
-
-  if (!response.ok) {
-    return { errorCode: data?.code ?? "gmail_session", ok: false, setCookie: null };
-  }
-
-  return {
-    errorCode: null,
-    ok: true,
-    setCookie: response.headers.get("set-cookie"),
-  };
-}
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -94,34 +59,11 @@ export async function GET(request: Request) {
     },
   });
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error || !data.session) {
+  const { session, error } = await exchangeIdentityCode(supabase.auth, code);
+  if (error || !session) {
     return NextResponse.redirect(
       loginErrorUrl(requestUrl.origin, "exchange", next)
     );
-  }
-
-  const providerRefreshToken = data.session.provider_refresh_token;
-  if (!providerRefreshToken) {
-    return NextResponse.redirect(
-      loginErrorUrl(requestUrl.origin, "gmail_token", next)
-    );
-  }
-
-  const sync = await syncGmailSession({
-    accessToken: data.session.access_token,
-    providerRefreshToken,
-    requestOrigin: requestUrl.origin,
-  });
-
-  if (!sync.ok) {
-    return NextResponse.redirect(
-      loginErrorUrl(requestUrl.origin, sync.errorCode ?? "gmail_session", next)
-    );
-  }
-
-  if (sync.setCookie) {
-    response.headers.append("set-cookie", sync.setCookie);
   }
 
   return response;
