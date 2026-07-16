@@ -5,10 +5,15 @@ export type MailConnection = {
   id: string;
   provider: string;
   email: string;
-  displayName: string | null;
+  display_name: string | null;
   status: MailConnectionStatus;
   capabilities: MailConnectionCapability[];
-  isDefault: boolean;
-  lastVerifiedAt: string | null;
-  lastErrorCode: string | null;
+  is_default: boolean;
+  last_verified_at: string | null;
+  last_error_code: string | null;
+};
+
+export type MailConnectionsPayload = {
+  connections: MailConnection[];
+  providers: string[];
 };

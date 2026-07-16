@@ -23,11 +23,11 @@ class FrontendUrlConfigTests(unittest.TestCase):
         ):
             self.assertEqual(config.frontend_base_url(), "https://app.example.com")
 
-    def test_google_redirect_uri_defaults_to_frontend_base_url(self) -> None:
+    def test_google_mail_redirect_uri_defaults_to_frontend_base_url(self) -> None:
         with patch.dict("os.environ", {"FRONTEND_PORT": "4123"}, clear=True):
             self.assertEqual(
-                config.google_redirect_uri(),
-                "http://localhost:4123/api/auth/google/callback",
+                config.google_mail_redirect_uri(),
+                "http://localhost:4123/api/mail-connections/google/callback",
             )
 
 

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from .errors import MailProviderNotFound
+from .protocols import (
+    CredentialRefresher,
+    CredentialRevoker,
+    MailSender,
+    OAuthMailboxConnector,
+)
 from .types import MailCapability, MailProvider
 
 
 @dataclass(frozen=True)
 class ProviderDefinition:
     provider: MailProvider
-    sender: Any
+    sender: MailSender
     capabilities: frozenset[MailCapability]
-    oauth_connector: Any | None = None
-    credential_refresher: Any | None = None
-    credential_revoker: Any | None = None
+    oauth_connector: OAuthMailboxConnector | None = None
+    credential_refresher: CredentialRefresher | None = None
+    credential_revoker: CredentialRevoker | None = None
 
 
 class ProviderRegistry:
@@ -22,15 +27,16 @@ class ProviderRegistry:
         self._providers: dict[str, ProviderDefinition] = {}
 
     def register(self, definition: ProviderDefinition) -> None:
-        key = definition.provider.value
+        key = definition.provider
+        if not key or key.strip() != key:
+            raise ValueError("Provider id must be a non-empty normalized string")
         if key in self._providers:
             raise ValueError(f"Provider already registered: {key}")
         self._providers[key] = definition
 
-    def get(self, provider: str | MailProvider) -> ProviderDefinition:
-        key = provider.value if isinstance(provider, MailProvider) else provider
+    def get(self, provider: MailProvider) -> ProviderDefinition:
         try:
-            return self._providers[key]
+            return self._providers[provider]
         except KeyError as exc:
             raise MailProviderNotFound() from exc
 

@@ -23,6 +23,11 @@ export function availableMailProviders() {
   return providers;
 }
 
+export function enabledMailProviders(ids: string[]) {
+  const enabled = new Set(ids);
+  return providers.filter((provider) => enabled.has(provider.id));
+}
+
 export function getMailProvider(id: string): MailProviderPresentation | null {
   return providers.find((provider) => provider.id === id) ?? null;
 }

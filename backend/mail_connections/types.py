@@ -12,8 +12,7 @@ JSONValue: TypeAlias = (
 ProviderCredentialPayload: TypeAlias = dict[str, JSONValue]
 
 
-class MailProvider(str, Enum):
-    GOOGLE = "google"
+MailProvider: TypeAlias = str
 
 
 class MailCapability(str, Enum):
@@ -39,6 +38,7 @@ class MailboxGrant:
     credentials: ProviderCredentialPayload
     granted_scopes: frozenset[str]
     capabilities: frozenset[MailCapability]
+    provider_metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         return f"MailboxGrant(identity={self.identity!r}, credentials=<redacted>)"
@@ -75,7 +75,7 @@ class MailConnection:
     def public(self) -> PublicMailConnection:
         return PublicMailConnection(
             id=str(self.id),
-            provider=self.provider.value,
+            provider=self.provider,
             email=self.email,
             display_name=self.display_name,
             status=self.status.value,
@@ -86,7 +86,7 @@ class MailConnection:
         )
 
     def __repr__(self) -> str:
-        return f"MailConnection(id={self.id!s}, provider={self.provider.value!r}, email={self.email!r})"
+        return f"MailConnection(id={self.id!s}, provider={self.provider!r}, email={self.email!r})"
 
 
 @dataclass(frozen=True)
@@ -94,3 +94,28 @@ class SendReceipt:
     provider: MailProvider
     accepted: bool
     provider_message_id: str | None = None
+
+
+@dataclass(frozen=True, repr=False)
+class StoredCredential:
+    payload: ProviderCredentialPayload
+    version: int
+
+    def __repr__(self) -> str:
+        return f"StoredCredential(version={self.version}, payload=<redacted>)"
+
+
+@dataclass(frozen=True, repr=False)
+class OAuthState:
+    owner_id: uuid.UUID
+    provider: MailProvider
+    target_connection_id: uuid.UUID | None
+    code_verifier: str
+    return_to: str
+    expires_at: datetime
+
+    def __repr__(self) -> str:
+        return (
+            f"OAuthState(owner_id={self.owner_id!s}, provider={self.provider!r}, "
+            "code_verifier=<redacted>)"
+        )
