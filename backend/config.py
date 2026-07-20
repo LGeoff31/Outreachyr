@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+# comments
+
 
 def load_dotenv() -> None:
     """Load env vars from backend, repo-root, and frontend `.env` files."""
